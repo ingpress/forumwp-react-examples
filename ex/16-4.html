@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>16.4: Saving a post from the composer</title>
+<!-- ForumWP React course, 16.4: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+<script>
+// A pretend ForumWP REST API, so examples from Chapter 14 on run without WordPress.
+// It answers the same routes as the mini ForumWP plugin from Chapter 14, from data
+// kept in memory (reload the page to start again).
+// Try: fakeApi.delay = 2000 (slow network), fakeApi.fail = true (server errors).
+(() => {
+  const now = Date.now();
+  const iso = (minutesAgo) => new Date(now - minutesAgo * 60000).toISOString();
+  const avatar = (n) => `https://i.pravatar.cc/96?img=${n}`;
+  const members = [
+    { id: 1, name: 'Ada', avatarUrl: avatar(47) },
+    { id: 2, name: 'Tunde', avatarUrl: avatar(12) },
+    { id: 3, name: 'Grace', avatarUrl: avatar(32) },
+  ];
+  const db = {
+    spaces: [
+      { id: 1, slug: 'general', name: 'General', description: 'Introduce yourself and say hi.', memberCount: 1280 },
+      { id: 2, slug: 'help', name: 'Help', description: 'Ask anything about ForumWP setup.', memberCount: 342 },
+      { id: 3, slug: 'announcements', name: 'Announcements', description: 'News from the team.', memberCount: 1280 },
+    ],
+    posts: [],
+    comments: [],
+    reactions: new Set(), // "postId:userId"
+    nextId: 100,
+  };
+  const titles = ['Welcome to the community', 'How do I change my avatar?', 'Show us your setup', 'Weekly wins thread', 'Dark mode is here', 'Tips for new members', 'Feature request: polls', 'Meetup in Lagos?', 'Favourite plugins this year', 'Release notes 0.20', 'Introduce yourself', 'Best way to invite people', 'Question about spaces', 'What are you building?', 'Share a screenshot', 'Monday check-in', 'Accessibility tips', 'Moderation question', 'Book recommendations', 'Friday thread', 'Office hours', 'Getting started guide', 'Ideas for events', 'Hello from Tunde', 'Thanks everyone!'];
+  titles.forEach((title, i) => {
+    db.posts.push({
+      id: i + 1, spaceId: i % 3 === 2 ? 2 : 1, userId: (i % 3) + 1, title,
+      body: `${title}. This is a sample post for the course examples.`,
+      reactionCount: (i * 7) % 23, commentCount: 0, createdAt: iso(i * 90 + 5),
+    });
+  });
+  db.comments.push(
+    { id: 1, postId: 1, userId: 2, body: 'Glad to be here!', createdAt: iso(60) },
+    { id: 2, postId: 1, userId: 3, body: 'Welcome, everyone.', createdAt: iso(30) },
+  );
+  db.posts[0].commentCount = 2;
+
+  const me = members[0];
+  window.forumwpData = window.forumwpData || {
+    basePath: '', siteName: 'Maker Collective', loginUrl: '/wp-login.php', nonce: 'fake-nonce',
+    currentUser: { id: me.id, name: me.name, avatarUrl: me.avatarUrl },
+  };
+
+  const author = (id) => { const m = members.find((x) => x.id === id); return m ? { id: m.id, name: m.name, avatarUrl: m.avatarUrl } : { id, name: 'Deleted member', avatarUrl: '' }; };
+  const formatPost = (p) => ({
+    id: p.id, spaceId: p.spaceId, title: p.title,
+    excerpt: p.body.split(/\s+/).slice(0, 30).join(' '), body: p.body,
+    reactionCount: p.reactionCount, reacted: db.reactions.has(`${p.id}:${me.id}`),
+    commentCount: p.commentCount, createdAt: p.createdAt, author: author(p.userId),
+  });
+  const formatComment = (c) => ({ id: c.id, postId: c.postId, body: c.body, createdAt: c.createdAt, author: author(c.userId) });
+  const error = (status, code, message, extra = {}) => ({ status, body: { code, message, data: { status, ...extra } } });
+  const notFound = () => error(404, 'forumwp_not_found', 'Not found.');
+  const findPost = (id) => db.posts.find((p) => p.id === id);
+
+  const routes = [
+    ['GET', /^\/spaces$/, () => db.spaces],
+    ['GET', /^\/spaces\/(\d+)$/, ([id]) => db.spaces.find((s) => s.id === id) || notFound()],
+    ['GET', /^\/spaces\/(\d+)\/posts$/, ([id], q) => {
+      if (!db.spaces.some((s) => s.id === id)) return notFound();
+      const cursor = Number(q.get('cursor') || 0);
+      const perPage = Number(q.get('per_page') || 20);
+      if (perPage < 1 || perPage > 50) return error(400, 'rest_invalid_param', 'Invalid parameter(s): per_page', { params: { per_page: 'per_page must be between 1 (inclusive) and 50 (inclusive)' } });
+      const list = db.posts.filter((p) => p.spaceId === id && (!cursor || p.id < cursor)).sort((a, b) => b.id - a.id);
+      const items = list.slice(0, perPage);
+      return { items: items.map(formatPost), next_cursor: list.length > perPage ? items[items.length - 1].id : null };
+    }],
+    ['POST', /^\/spaces\/(\d+)\/posts$/, ([id], q, data) => {
+      if (!db.spaces.some((s) => s.id === id)) return notFound();
+      const title = String(data.title ?? '').trim();
+      if (!title) return error(400, 'rest_missing_callback_param', 'Missing parameter(s): title', { params: ['title'] });
+      const post = { id: ++db.nextId, spaceId: id, userId: me.id, title, body: String(data.body ?? ''), reactionCount: 0, commentCount: 0, createdAt: new Date().toISOString() };
+      db.posts.push(post);
+      return { status: 201, body: formatPost(post) };
+    }],
+    ['GET', /^\/posts\/(\d+)$/, ([id]) => (findPost(id) ? formatPost(findPost(id)) : notFound())],
+    ['DELETE', /^\/posts\/(\d+)$/, ([id]) => {
+      const post = findPost(id);
+      if (!post) return notFound();
+      db.posts = db.posts.filter((p) => p.id !== id);
+      return { deleted: true, previous: formatPost(post) };
+    }],
+    ['POST', /^\/posts\/(\d+)\/reactions$/, ([id]) => {
+      const post = findPost(id);
+      if (!post) return notFound();
+      if (!db.reactions.has(`${id}:${me.id}`)) { db.reactions.add(`${id}:${me.id}`); post.reactionCount++; }
+      return formatPost(post);
+    }],
+    ['DELETE', /^\/posts\/(\d+)\/reactions$/, ([id]) => {
+      const post = findPost(id);
+      if (!post) return notFound();
+      if (db.reactions.delete(`${id}:${me.id}`)) post.reactionCount--;
+      return formatPost(post);
+    }],
+    ['GET', /^\/posts\/(\d+)\/comments$/, ([id]) => (findPost(id) ? db.comments.filter((c) => c.postId === id).map(formatComment) : notFound())],
+    ['POST', /^\/posts\/(\d+)\/comments$/, ([id], q, data) => {
+      const post = findPost(id);
+      if (!post) return notFound();
+      const body = String(data.body ?? '').trim();
+      if (!body) return error(400, 'rest_missing_callback_param', 'Missing parameter(s): body', { params: ['body'] });
+      const comment = { id: ++db.nextId, postId: id, userId: me.id, body, createdAt: new Date().toISOString() };
+      db.comments.push(comment);
+      post.commentCount++;
+      return { status: 201, body: formatComment(comment) };
+    }],
+    ['GET', /^\/spaces\/(\d+)\/members$/, () => members.map((m) => ({ ...m, role: m.id === 1 ? 'admin' : 'member' }))],
+    ['GET', /^\/me$/, () => ({ ...window.forumwpData.currentUser })],
+  ];
+
+  window.fakeApi = { delay: 400, fail: false, db, log: true };
+  const realFetch = window.fetch.bind(window);
+
+  window.fetch = async (input, init = {}) => {
+    const url = new URL(typeof input === 'string' ? input : input.url, 'https://example.test/');
+    const match = url.pathname.match(/forumwp\/v1(\/.*)$/) || (url.searchParams.get('rest_route') || '').match(/forumwp\/v1(\/.*)$/);
+    if (!match) return realFetch(input, init);
+
+    const headers = new Headers(init.headers || {});
+    let method = (init.method || 'GET').toUpperCase();
+    method = (headers.get('X-HTTP-Method-Override') || method).toUpperCase();
+    let data = {};
+    if (init.body && typeof init.body === 'string') { try { data = JSON.parse(init.body); } catch {} }
+    const path = match[1].replace(/\/$/, '');
+
+    await new Promise((r) => setTimeout(r, window.fakeApi.delay));
+    let result;
+    if (window.fakeApi.fail) {
+      result = error(500, 'internal_server_error', 'There has been a critical error on this website.');
+    } else {
+      const route = routes.find(([m, re]) => m === method && re.test(path));
+      if (!route) {
+        result = error(404, 'rest_no_route', 'No route was found matching the URL and request method.');
+      } else {
+        const params = path.match(route[1]).slice(1).map(Number);
+        const out = route[2](params, url.searchParams, data);
+        result = out && typeof out.status === 'number' && 'body' in out ? out : { status: 200, body: out };
+      }
+    }
+    if (window.fakeApi.log) console.info(`[fake API] ${method} /wp-json/forumwp/v1${path}${url.search} -> ${result.status}`);
+    return new Response(JSON.stringify(result.body), { status: result.status, headers: { 'Content-Type': 'application/json; charset=UTF-8' } });
+  };
+})();
+
+</script>
+<script type="text/plain" id="example">
+// @id 16.4
+// @title Saving a post from the composer
+// @section 16.6
+// @api fake
+// In the book: import { get, post } from '../api/client';
+
+// Added so this runs on its own: the client from 16.1, inlined.
+import apiFetch from '@wordpress/api-fetch';
+import { addQueryArgs } from '@wordpress/url';
+const get = (path, query = {}) => apiFetch({ path: addQueryArgs('/forumwp/v1' + path, query) });
+const post = (path, data = {}) => apiFetch({ path: '/forumwp/v1' + path, method: 'POST', data });
+
+import { useState } from '@wordpress/element';
+import { Button, Notice, TextControl, TextareaControl } from '@wordpress/components';
+import { __ } from '@wordpress/i18n';
+
+const PostComposer = ({ onSubmit }) => {
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (!title.trim()) {
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await onSubmit({ title, body });
+      setTitle('');
+      setBody('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form className="fwp-composer" onSubmit={handleSubmit}>
+      {error && (
+        <Notice status="error" onRemove={() => setError(null)}>
+          {error}
+        </Notice>
+      )}
+      {/* TextControl and TextareaControl exactly as in Chapter 10 */}
+      {/* Added so this runs on its own: the two fields from Chapter 10. */}
+      <TextControl
+        label={__('Title', 'forumwp')}
+        value={title}
+        onChange={setTitle}
+        __next40pxDefaultSize
+        __nextHasNoMarginBottom
+      />
+      <TextareaControl
+        label={__('Post', 'forumwp')}
+        value={body}
+        onChange={setBody}
+        __nextHasNoMarginBottom
+      />
+      <Button
+        variant="primary"
+        type="submit"
+        isBusy={saving}
+        disabled={saving || !title.trim()}
+        __next40pxDefaultSize
+      >
+        {saving ? __('Posting…', 'forumwp') : __('Post', 'forumwp')}
+      </Button>
+    </form>
+  );
+};
+
+// Added so this runs on its own: SpaceFeed from 16.5 (with the ignore flag), a simple Feed,
+// and the render call.
+import { useEffect, createRoot } from '@wordpress/element';
+import { Spinner } from '@wordpress/components';
+
+const Feed = ({ posts }) => (
+  <div className="fwp-feed">
+    {posts.map((post) => (
+      <article key={post.id} className="fwp-post">
+        <strong>{post.title}</strong> by {post.author.name}
+      </article>
+    ))}
+  </div>
+);
+
+const SpaceFeed = ({ spaceId }) => {
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let ignore = false;
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const page = await get(`/spaces/${spaceId}/posts`);
+        if (!ignore) {
+          setPosts(page.items);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setError(err);
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    };
+    load();
+    return () => {
+      ignore = true;
+    };
+  }, [spaceId]);
+
+// inside SpaceFeed:
+const addPost = async ({ title, body }) => {
+  const created = await post(`/spaces/${spaceId}/posts`, { title, body });
+  setPosts((current) => [created, ...current]);
+};
+
+  if (loading) {
+    return <Spinner />;
+  }
+  if (error) {
+    return (
+      <Notice status="error" isDismissible={false}>
+        {error.message}
+      </Notice>
+    );
+  }
+
+// replacing the "No posts yet" return and the last return:
+return (
+  <>
+    <PostComposer onSubmit={addPost} />
+    {posts.length === 0 ? (
+      <p className="fwp-empty">No posts yet. Start the conversation!</p>
+    ) : (
+      <Feed posts={posts} />
+    )}
+  </>
+);
+};
+
+// Added so this runs on its own. Space 3 starts empty in the pretend API: post something!
+// To see a failed save, type fakeApi.fail = true in the browser console first:
+// the composer keeps your text and shows the server's message.
+createRoot(document.getElementById('forumwp-root')).render(<SpaceFeed spaceId={3} />);
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>
