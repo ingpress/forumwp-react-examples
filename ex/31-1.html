@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>31.1: A video that can&#x27;t play offers a download instead</title>
+<!-- ForumWP React course, 31.1: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 31.1
+// @title A video that can't play offers a download instead
+// @section 31.1
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { __, sprintf } from '@wordpress/i18n'; // Added so this runs on its own
+
+const Player = ( { item } ) => {
+  const [ failed, setFailed ] = useState( false );
+  const isAudio = item.type === 'audio';
+  const download = (
+    <a href={ item.url } download={ item.name || true }>
+      { isAudio ? __( 'Download the audio', 'forumwp' ) : __( 'Download the video', 'forumwp' ) }
+    </a>
+  );
+
+  if ( failed ) {
+    return (
+      <p className="fwp-media-error">
+        { isAudio
+          ? __( "This audio can't play in your browser.", 'forumwp' )
+          : __( "This video can't play in your browser.", 'forumwp' ) }{ ' ' }
+        { download }
+      </p>
+    );
+  }
+
+  const Tag = isAudio ? 'audio' : 'video';
+  const sized = ! isAudio && item.width > 0 && item.height > 0;
+
+  return (
+    <Tag
+      className={ isAudio ? 'fwp-audio' : 'fwp-video' }
+      src={ item.url }
+      controls
+      preload="metadata"
+      aria-label={ sprintf( isAudio ? __( 'Audio: %s', 'forumwp' ) : __( 'Video: %s', 'forumwp' ), item.name ?? '' ) }
+      onError={ () => {
+        console.log( `${ item.name }: the browser fired "error"` ); // Added so this runs on its own
+        setFailed( true );
+      } }
+      // A browser that can't decode the picture may still play the sound.
+      onLoadedMetadata={ ( e ) => sized && ! e.currentTarget.videoWidth && setFailed( true ) }
+      { ...( isAudio ? {} : { playsInline: true, style: sized ? { aspectRatio: `${ item.width } / ${ item.height }`, width: 320 } : undefined } ) }
+    >
+      { download }
+    </Tag>
+  );
+};
+
+// Added so this runs on its own: two uploads whose bytes no browser can decode, like an
+// iPhone's HEVC video in Chrome. (A real post would have real files from the server.)
+const attachments = [
+  { id: 1, type: 'video', name: 'IMG_0412.mov', url: 'data:video/mp4;base64,AAAAIGZ0eXBoZXZj', width: 1920, height: 1080 },
+  { id: 2, type: 'audio', name: 'voice-memo.m4a', url: 'data:audio/mp4;base64,AAAA' },
+];
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render(
+  <div className="fwp-post">
+    <p>
+      <strong>Tunde:</strong> Here is the bug on my phone.
+    </p>
+    { attachments.map( ( item ) => (
+      <Player key={ item.id } item={ item } />
+    ) ) }
+  </div>
+);
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>

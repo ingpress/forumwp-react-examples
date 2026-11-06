@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>31.5: An import that runs batch by batch, with Stop and retries</title>
+<!-- ForumWP React course, 31.5: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 31.5
+// @title An import that runs batch by batch, with Stop and retries
+// @section 31.5
+// @click Start the import
+import { createRoot, useEffect, useRef, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, Notice } from '@wordpress/components'; // Added so this runs on its own
+
+// Added so this runs on its own: a pretend server with 1,000 topics to import, 200 per batch.
+// It saves where it got to after each batch, so a stopped import carries on from there.
+const server = {
+  state: { status: 'idle', processed: 0, total: 1000 },
+  hiccups: 0,
+  start() {
+    server.state = { status: 'running', processed: 0, total: 1000 };
+    return Promise.resolve( { ...server.state } );
+  },
+  batch() {
+    console.log( 'POST /forumwp/v1/import/bbpress/batch' );
+    return new Promise( ( resolve, reject ) =>
+      setTimeout( () => {
+        if ( server.hiccups > 0 ) {
+          server.hiccups--;
+          console.log( '  503: the server hiccupped' );
+          reject( { message: 'Service Unavailable', data: { status: 503 } } );
+          return;
+        }
+        server.state.processed = Math.min( server.state.total, server.state.processed + 200 );
+        if ( server.state.processed >= server.state.total ) {
+          server.state.status = 'done';
+        }
+        resolve( { ...server.state } );
+      }, 500 )
+    );
+  },
+};
+
+// Shorter waits than the real 2, 4 and 8 seconds, so you don't wait long here.
+const wait = ( ms ) => new Promise( ( resolve ) => setTimeout( resolve, ms / 4 ) );
+
+/**
+ * Runs one batch. A dropped connection, a server hiccup or a batch still finishing
+ * is tried again a few times (after 2, 4 and 8 seconds) before giving up.
+ */
+const runBatch = async () => {
+  for ( let attempt = 0; ; attempt++ ) {
+    try {
+      return await server.batch();
+    } catch ( e ) {
+      const status = e?.data?.status || 0;
+      const transient = ! status || status >= 500 || e.code === 'forumwp_import_busy';
+      if ( attempt >= 3 || ! transient ) {
+        throw e;
+      }
+      console.log( `  trying again in ${ 2 * 2 ** attempt } s (here a quarter of that)` );
+      await wait( 2000 * 2 ** attempt );
+    }
+  }
+};
+
+const Importer = () => {
+  const [ source, onChange ] = useState( server.state );
+  const [ running, setRunning ] = useState( false );
+  const [ error, setError ] = useState( null );
+  const stop = useRef( false );
+  // One run at a time, even with a double click.
+  const busy = useRef( false );
+
+  // Leaving the page stops the import (it can be continued later): ask first.
+  useEffect( () => {
+    if ( ! running ) {
+      return;
+    }
+    const warn = ( event ) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener( 'beforeunload', warn );
+
+    return () => window.removeEventListener( 'beforeunload', warn );
+  }, [ running ] );
+
+  const run = async ( first ) => {
+    if ( busy.current ) {
+      return;
+    }
+    busy.current = true;
+    stop.current = false;
+    setRunning( true );
+    setError( null );
+    try {
+      let state = first ? await first() : source;
+      onChange( state );
+      while ( ! stop.current && state.status === 'running' ) {
+        state = await runBatch();
+        onChange( state );
+      }
+    } catch ( e ) {
+      setError( e.message );
+    }
+    busy.current = false;
+    setRunning( false );
+  };
+
+  const percent = Math.round( ( source.processed / source.total ) * 100 );
+  const paused = ! running && source.status === 'running';
+
+  return (
+    <div style={ { display: 'grid', gap: 12, maxWidth: 480 } }>
+      { error && <Notice status="error" onRemove={ () => setError( null ) }>{ error }</Notice> }
+      <div role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={ percent } style={ { background: '#eee', height: 12, borderRadius: 6 } }>
+        <div style={ { width: `${ percent }%`, background: '#3858e9', height: 12, borderRadius: 6 } } />
+      </div>
+      <p>
+        { source.processed } of { source.total } topics ({ source.status }{ paused ? ', stopped' : '' })
+      </p>
+      <div className="fwp-row">
+        <Button variant="primary" disabled={ running } onClick={ () => run( paused ? null : () => server.start() ) }>
+          { paused ? 'Continue' : 'Start the import' }
+        </Button>
+        <Button variant="secondary" disabled={ ! running } onClick={ () => ( stop.current = true ) }>
+          Stop
+        </Button>
+        <Button variant="tertiary" onClick={ () => ( server.hiccups += 2 ) }>
+          Make the server hiccup twice
+        </Button>
+        <Button variant="tertiary" onClick={ () => ( server.hiccups += 5 ) }>
+          Make it fail for good
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <Importer /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>
