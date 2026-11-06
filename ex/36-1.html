@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>36.1: A run log with Retry</title>
+<!-- ForumWP React course, 36.1: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 36.1
+// @title A run log with Retry
+// @section 36.6
+// @click Retry
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, Notice } from '@wordpress/components'; // Added so this runs on its own
+import {
+  QueryClient,
+  QueryClientProvider,
+  useInfiniteQuery,
+  useQueryClient,
+} from '@tanstack/react-query'; // Added so this runs on its own
+
+// Added so this runs on its own: a pretend server. Run 880 stopped at its webhook step; a worker
+// picks up queued runs two seconds later and finishes them.
+const runs = [
+  { id: 880, member: 'Tunde', status: 'failed', log: [ 'Message sent', 'Webhook refused: 500 Server Error' ] },
+  { id: 879, member: 'Kemi', status: 'waiting', log: [ 'Message sent', 'Waiting 3 days' ] },
+  { id: 878, member: 'Ada', status: 'done', log: [ 'Message sent', 'Webhook sent' ] },
+  { id: 877, member: 'Sam', status: 'done', log: [ 'Message sent', 'Webhook sent' ] },
+];
+const later = ( fn, ms = 300 ) => new Promise( ( resolve, reject ) => setTimeout( () => {
+  try {
+    resolve( fn() );
+  } catch ( e ) {
+    reject( e );
+  }
+}, ms ) );
+const proGet = ( path ) => {
+  console.log( 'GET', path );
+  const before = Number( new URLSearchParams( path.split( '?' )[ 1 ] ).get( 'before' ) ) || Infinity;
+  const limit = 2; // the real list asks for 6 at a time
+  const older = runs.filter( ( r ) => r.id < before );
+  return later( () => ( { runs: older.slice( 0, limit ).map( ( r ) => ( { ...r, log: [ ...r.log ] } ) ), more: older.length > limit } ) );
+};
+const proPost = ( path ) => {
+  console.log( 'POST', path );
+  const id = Number( path.match( /runs\/(\d+)/ )[ 1 ] );
+  return later( () => {
+    const run = runs.find( ( r ) => r.id === id );
+    // Engine::retry(): UPDATE ... WHERE id = %d AND status = 'failed'. Only one click can win.
+    if ( run.status !== 'failed' ) {
+      throw { status: 409, message: 'Only a run that failed can be retried.' };
+    }
+    run.status = 'queued';
+    run.log.push( 'Retrying the webhook' );
+    setTimeout( () => {
+      // The worker tries only the failed step again; the message isn't sent twice.
+      run.status = 'done';
+      run.log[ run.log.length - 1 ] = 'Webhook sent';
+    }, 2000 );
+    return { ...run };
+  }, 500 );
+};
+
+const runsKey = ( id ) => [ 'forumwp-pro', 'automation-runs', id ];
+const KEY = [ 'forumwp-pro', 'automations' ]; // Added so this runs on its own
+
+const RunLog = ( { id } ) => {
+  const queryClient = useQueryClient();
+  const [ retrying, setRetrying ] = useState( 0 );
+  const [ problem, setProblem ] = useState( '' );
+  const { data, fetchNextPage, hasNextPage } = useInfiniteQuery( {
+    queryKey: runsKey( id ),
+    queryFn: ( { pageParam } ) => proGet( `/automations/${ id }/runs?limit=6&before=${ pageParam }` ),
+    initialPageParam: 0,
+    getNextPageParam: ( last ) => ( last.more ? last.runs[ last.runs.length - 1 ].id : undefined ),
+    // Waiting and queued runs move on in the background. (The real list checks every 30 seconds.)
+    refetchInterval: 3000,
+  } );
+
+  const retry = async ( run ) => {
+    setRetrying( run.id );
+    try {
+      const result = await proPost( `/automations/runs/${ run.id }/retry` );
+      console.log( `Retried the run for ${ result.member }: in the queue.` );
+    } catch ( e ) {
+      setProblem( e.message );
+    }
+    queryClient.invalidateQueries( { queryKey: runsKey( id ) } );
+    queryClient.invalidateQueries( { queryKey: KEY } );
+    setRetrying( 0 );
+  };
+
+  if ( ! data ) {
+    return <p>Loading…</p>;
+  }
+  return (
+    <div style={ { display: 'grid', gap: 8, maxWidth: 520 } }>
+      { problem && (
+        <Notice status="warning" onRemove={ () => setProblem( '' ) }>
+          { problem }
+        </Notice>
+      ) }
+      { data.pages.flatMap( ( p ) => p.runs ).map( ( run ) => (
+        <div key={ run.id } className="fwp-card">
+          <strong>{ run.member }</strong>: { run.status }
+          <ol>
+            { run.log.map( ( line, i ) => (
+              <li key={ i }>{ line }</li>
+            ) ) }
+          </ol>
+          { run.status === 'failed' && (
+            <Button variant="secondary" isBusy={ retrying === run.id } onClick={ () => retry( run ) }>
+              Retry
+            </Button>
+          ) }
+        </div>
+      ) ) }
+      { hasNextPage && (
+        <Button variant="link" onClick={ () => fetchNextPage() }>
+          Show older runs
+        </Button>
+      ) }
+      <p className="fwp-muted">Try a double-click on Retry: the second request gets a 409.</p>
+    </div>
+  );
+};
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render(
+  <QueryClientProvider client={ new QueryClient() }>
+    <RunLog id={ 3 } />
+  </QueryClientProvider>
+);
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>
