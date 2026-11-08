@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>38.1: Checking what the AI sent back, and drawing it as text</title>
+<!-- ForumWP React course, 38.1: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 38.1
+// @title Checking what the AI sent back, and drawing it as text
+// @section 38.2
+import { createRoot, Fragment, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Notice } from '@wordpress/components'; // Added so this runs on its own
+
+// Added so this runs on its own: the two posts that were sent with the question, as [1] and [2].
+const sent = [
+  { id: 881, title: 'Changing your avatar' },
+  { id: 902, title: 'Profile photos are square now' },
+];
+
+// Added so this runs on its own: six replies a model could really send back.
+const replies = {
+  good: '{"found": true, "answer": "Open **Edit profile** and choose a photo [1]. Square photos look best [2]."}',
+  invented: '{"found": true, "answer": "Open **Edit profile** [1]. You can also email support [7]."}',
+  wrapped: 'Sure! Here is the JSON:\n```json\n{"found": true, "answer": "Choose a photo under **Edit profile** [2]."}\n```',
+  noCite: '{"found": true, "answer": "I think you can change it somewhere in your settings."}',
+  html: '{"found": true, "answer": "Click <img src=x onerror=alert(1)> **Edit profile** [1]."}',
+  list: '[ "Edit profile" ]',
+};
+
+// ForumWPPro\Ai\Client::decode(), in JavaScript: the JSON object in a reply.
+const decode = ( text ) => {
+  text = text.trim();
+  const start = text.indexOf( '{' );
+  const end = text.lastIndexOf( '}' );
+  if ( start === -1 || end < start ) {
+    return null;
+  }
+  let data;
+  try {
+    data = JSON.parse( text.slice( start, end + 1 ) );
+  } catch {
+    return null;
+  }
+
+  return data && typeof data === 'object' && ! Array.isArray( data ) ? data : null;
+};
+
+// ForumWPPro\Ai\Ask::check_reply(), in JavaScript. (On the server, sanitize_textarea_field()
+// also strips tags first; it's left out here so you can see React draw them as text.)
+const checkReply = ( reply, count ) => {
+  if ( reply.found !== true || typeof reply.answer !== 'string' ) {
+    return null;
+  }
+  const cited = [];
+  const answer = reply.answer.trim().slice( 0, 3000 ).replace( /\s*\[(\d+)\]/g, ( m, digits ) => {
+    const n = Number( digits );
+    if ( n < 1 || n > count ) {
+      console.log( `dropped [${ n }]: only ${ count } posts were sent` );
+      return '';
+    }
+    let at = cited.indexOf( n );
+    if ( at === -1 ) {
+      cited.push( n );
+      at = cited.length - 1;
+    }
+
+    return ` [${ at + 1 }]`;
+  } );
+
+  return cited.length && answer.trim() ? { answer: answer.trim(), cited } : null;
+};
+
+// From app/portal/ai/Ask.js. (Link is the app's router link; a plain <a> here.)
+const AnswerText = ( { text, sources } ) => {
+  const Link = ( { to, ...props } ) => <a href={ `#${ to }` } { ...props } />; // Added so this runs on its own
+
+  return text.split( /\n{2,}/ ).map( ( para, p ) => (
+    <p key={ p }>
+      { para.split( /(\*\*[^*]+\*\*|\[\d+\])/ ).map( ( bit, i ) => {
+        const cite = /^\[(\d+)\]$/.exec( bit );
+        if ( cite && sources[ cite[ 1 ] - 1 ] ) {
+          const source = sources[ cite[ 1 ] - 1 ];
+          return (
+            <Link key={ i } className="fwpp-cite" to={ `/p/${ source.id }` } aria-label={ `Source ${ cite[ 1 ] }: ${ source.title }` }>
+              { cite[ 1 ] }
+            </Link>
+          );
+        }
+        if ( /^\*\*[^*]+\*\*$/.test( bit ) ) {
+          return <strong key={ i }>{ bit.slice( 2, -2 ) }</strong>;
+        }
+
+        return <Fragment key={ i }>{ bit }</Fragment>;
+      } ) }
+    </p>
+  ) );
+};
+
+// Added so this runs on its own: pick a reply, see what the checks make of it.
+const Demo = () => {
+  const [ which, setWhich ] = useState( 'good' );
+  const raw = replies[ which ];
+  const data = decode( raw );
+  const checked = data ? checkReply( data, sent.length ) : null;
+
+  return (
+    <div className="fwp-card" style={ { maxWidth: 620 } }>
+      <p>
+        The AI sent back:{ ' ' }
+        <select value={ which } onChange={ ( e ) => setWhich( e.target.value ) }>
+          { Object.keys( replies ).map( ( k ) => <option key={ k }>{ k }</option> ) }
+        </select>
+      </p>
+      <pre style={ { whiteSpace: 'pre-wrap', background: '#f6f7f7', padding: 8 } }>{ raw }</pre>
+      { ! data && (
+        <Notice status="error" isDismissible={ false }>
+          The AI service sent back something we couldn’t read. Please try again.
+        </Notice>
+      ) }
+      { data && ! checked && <p>No answer: the app shows “No answer found in posts you can see.”</p> }
+      { checked && (
+        <>
+          <AnswerText text={ checked.answer } sources={ checked.cited.map( ( n ) => sent[ n - 1 ] ) } />
+          <ol>
+            { checked.cited.map( ( n ) => <li key={ n }>{ sent[ n - 1 ].title }</li> ) }
+          </ol>
+        </>
+      ) }
+    </div>
+  );
+};
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <Demo /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>

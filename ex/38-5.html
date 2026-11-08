@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>38.5: Background jobs: a spam check that fails open, and a transcript the app polls for</title>
+<!-- ForumWP React course, 38.5: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 38.5
+// @title Background jobs: a spam check that fails open, and a transcript the app polls for
+// @section 38.6
+// @click Publish
+import { createRoot, useEffect, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, Notice, SelectControl, Spinner } from '@wordpress/components'; // Added so this runs on its own
+import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'; // Added so this runs on its own
+
+// Added so this runs on its own: a pretend server with a job queue. In ForumWP Pro the queue is
+// Action Scheduler (as_enqueue_async_action), and a worker runs jobs after the request has ended.
+const server = ( () => {
+  const posts = [];
+  const notes = [];
+  const queue = [];
+  let aiMode = 'fine';
+  const transcript = { status: 'none', segments: [] };
+
+  // Added so this runs on its own: what the pretend AI does, chosen in the demo.
+  const ai = async () => {
+    await new Promise( ( r ) => setTimeout( r, 600 ) );
+    if ( aiMode === 'down' ) {
+      return { error: 'forumwp_pro_ai_failed', message: 'The AI service didn’t answer. Please try again in a moment.' };
+    }
+    return {
+      fine: { spam: false, reason: '' },
+      spam: { spam: true, reason: 'Advertises a paid service with a link.' },
+      odd: { spam: 'maybe', reason: 'Not sure', confidence: 0.5 },
+    }[ aiMode ];
+  };
+
+  // SpamCheck::verdict(): exactly { spam: bool, reason: string }, or null.
+  const verdict = ( reply ) => {
+    if ( ! reply || typeof reply.spam !== 'boolean' || typeof reply.reason !== 'string' || Object.keys( reply ).some( ( k ) => ! [ 'spam', 'reason' ].includes( k ) ) ) {
+      return null;
+    }
+    return { spam: reply.spam, reason: reply.spam && ! reply.reason ? 'Looks like spam.' : reply.reason };
+  };
+
+  // SpamCheck::run(), the background job.
+  const run = async ( id ) => {
+    const post = posts.find( ( p ) => p.id === id );
+    if ( ! post || post.status !== 'published' ) {
+      return;
+    }
+    const reply = await ai();
+    const result = reply.error ? null : verdict( reply );
+    if ( result === null ) {
+      // Fail open: the post stays up. The note is written down for the log.
+      notes.push( `post ${ id }: check failed (${ reply.error ? reply.message : 'the AI’s answer wasn’t in the expected form' }), left up` );
+      return;
+    }
+    if ( ! result.spam ) {
+      notes.push( `post ${ id }: ok` );
+      return;
+    }
+    notes.push( `post ${ id }: spam (${ result.reason }), held for a moderator` );
+    post.status = 'held';
+  };
+
+  // Added so this runs on its own: the worker. It picks up one job a second.
+  setInterval( () => {
+    const job = queue.shift();
+    if ( job ) {
+      console.log( 'worker: running', job.hook, job.args );
+      job.hook === 'forumwp_pro_ai_spam_check' ? run( job.args[ 1 ] ) : transcribe();
+    }
+  }, 1000 );
+
+  // Transcripts::run(), shortened: queued → working → ready.
+  const transcribe = async () => {
+    transcript.status = 'working';
+    await new Promise( ( r ) => setTimeout( r, 2500 ) );
+    transcript.status = 'ready';
+    transcript.segments = [ { s: 0, e: 4, t: 'Welcome, everyone.' }, { s: 4, e: 9, t: 'Today: the new feed.' } ];
+  };
+
+  return {
+    setAiMode: ( m ) => ( aiMode = m ),
+    // POST /posts: published at once; the check is queued, not run.
+    publish: ( body ) => {
+      const post = { id: posts.length + 1, body, status: 'published' };
+      posts.push( post );
+      queue.push( { hook: 'forumwp_pro_ai_spam_check', args: [ 'post', post.id ] } );
+      return post;
+    },
+    posts: () => posts.map( ( p ) => ( { ...p } ) ),
+    notes: () => [ ...notes ],
+    // GET and POST /ai/transcripts/replay/42
+    transcript: async () => {
+      console.log( 'GET /ai/transcripts/replay/42 →', transcript.status );
+      return { ...transcript };
+    },
+    transcribe: async () => {
+      transcript.status = 'queued';
+      queue.push( { hook: 'forumwp_pro_ai_transcribe', args: [ 7 ] } );
+      return { ...transcript };
+    },
+  };
+} )();
+
+const SpamDemo = () => {
+  const [ mode, setMode ] = useState( 'fine' );
+  const [ , redraw ] = useState( 0 );
+  // Added so this runs on its own: redraw twice a second to show the job's effect.
+  useEffect( () => {
+    const timer = setInterval( () => redraw( ( n ) => n + 1 ), 500 );
+    return () => clearInterval( timer );
+  }, [] );
+
+  return (
+    <div className="fwp-card">
+      <strong>Spam check</strong>
+      <SelectControl
+        label="The AI will…"
+        value={ mode }
+        onChange={ ( m ) => { setMode( m ); server.setAiMode( m ); } }
+        options={ [
+          { value: 'fine', label: 'say it looks fine' },
+          { value: 'spam', label: 'say it’s spam' },
+          { value: 'odd', label: 'answer in the wrong shape' },
+          { value: 'down', label: 'not answer (service down)' },
+        ] }
+        __next40pxDefaultSize
+        __nextHasNoMarginBottom
+      />
+      <p>
+        <Button variant="primary" onClick={ () => server.publish( 'Hi! I just joined. Try my SEO tool at example.com' ) }>Publish</Button>
+      </p>
+      <ul>
+        { server.posts().map( ( p ) => <li key={ p.id }>Post { p.id }: <strong>{ p.status }</strong></li> ) }
+      </ul>
+      <ul className="fwp-muted">{ server.notes().map( ( n, i ) => <li key={ i }>{ n }</li> ) }</ul>
+    </div>
+  );
+};
+
+// From app/portal/ai/Transcript.js, shortened: poll while the job is queued or working.
+const TranscriptPanel = () => {
+  const queryClient = useQueryClient();
+  const key = [ 'fwpp-ai-transcript', 'replay', 42 ];
+  const { data, isPending } = useQuery( {
+    queryKey: key,
+    queryFn: () => server.transcript(),
+    // While it is being made, look again every few seconds.
+    refetchInterval: ( query ) =>
+      [ 'queued', 'working' ].includes( query.state.data?.status ) ? 1000 : false,
+  } );
+  const make = useMutation( {
+    mutationFn: () => server.transcribe(),
+    onSuccess: ( fresh ) => queryClient.setQueryData( key, fresh ),
+  } );
+
+  if ( isPending ) {
+    return <Spinner />;
+  }
+
+  return (
+    <div className="fwp-card">
+      <strong>Transcript</strong>
+      { data.status === 'none' && <p><Button variant="secondary" onClick={ () => make.mutate() }>Make transcript</Button></p> }
+      { [ 'queued', 'working' ].includes( data.status ) && (
+        <Notice status="info" isDismissible={ false }>Making the transcript ({ data.status })… You can leave this page.</Notice>
+      ) }
+      { data.status === 'ready' && (
+        <ul>{ data.segments.map( ( s ) => <li key={ s.s }>[0:0{ s.s }] { s.t }</li> ) }</ul>
+      ) }
+    </div>
+  );
+};
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render(
+  <QueryClientProvider client={ new QueryClient() }>
+    <div style={ { maxWidth: 560 } }>
+      <SpamDemo />
+      <TranscriptPanel />
+    </div>
+  </QueryClientProvider>
+);
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>
