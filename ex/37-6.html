@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>37.6: Phone tabs that keep the call going</title>
+<!-- ForumWP React course, 37.6: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 37.6
+// @title Phone tabs that keep the call going
+// @section 37.7
+import { createRoot, useEffect, useState } from '@wordpress/element'; // Added so this runs on its own
+
+// Added so this runs on its own: the room's phone styles from ForumWP Pro's live.scss, as plain
+// CSS, without the @media (max-width: 900px) around them, so they apply at any width here.
+document.head.insertAdjacentHTML( 'beforeend', `<style>
+  .fwpp-room { border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 16px; max-width: 420px; }
+  .fwpp-room__grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .fwpp-room__grid.is-tab-chat .fwpp-room__main { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .fwpp-room__grid.is-tab-room .fwpp-room__side { display: none; }
+  .fwp-tab[aria-selected="true"] { font-weight: 600; text-decoration: underline; }
+</style>` );
+
+// Added so this runs on its own: a pretend video call. It starts when it mounts and hangs up when
+// it unmounts, as Jitsi's IFrame API does (api.dispose() in JitsiStage's clean-up).
+const FakeCall = ( { name } ) => {
+  const [ seconds, setSeconds ] = useState( 0 );
+  useEffect( () => {
+    console.log( `${ name }: joined the call` );
+    const timer = setInterval( () => setSeconds( ( s ) => s + 1 ), 1000 );
+
+    return () => {
+      clearInterval( timer );
+      console.log( `${ name }: left the call` );
+    };
+  }, [ name ] );
+
+  return <div style={ { background: '#1b1f27', color: '#fff', padding: 24 } }>In the call for { seconds } s</div>;
+};
+
+// Added so this runs on its own: a small stand-in for ForumWP's Tabs (window.forumwp.components.Tabs).
+const Tabs = ( { tabs, current, onChange, label } ) => (
+  <div role="tablist" aria-label={ label }>
+    { tabs.map( ( tab ) => (
+      <button key={ tab.id } type="button" role="tab" className="fwp-tab components-button" aria-selected={ current === tab.id } onClick={ () => onChange( tab.id ) }>
+        { tab.label }
+      </button>
+    ) ) }
+  </div>
+);
+
+// The way ForumWP Pro does it (app/portal/live/Room.js, shortened): both panels are always drawn,
+// and the grid's class says which one shows. CSS hides the other.
+const Room = () => {
+  const [ tab, setTab ] = useState( 'room' );
+
+  return (
+    <div className="fwpp-room">
+      <strong>Drawn, then hidden with CSS</strong>
+      <Tabs
+        label="Room"
+        current={ tab }
+        onChange={ setTab }
+        tabs={ [
+          { id: 'room', label: 'Room' },
+          { id: 'chat', label: 'Chat' },
+        ] }
+      />
+      <div className={ `fwpp-room__grid is-tab-${ tab }` }>
+        <div className="fwpp-room__main">
+          <FakeCall name="CSS tabs" />
+        </div>
+        <aside className="fwpp-room__side">
+          <p>The chat. Go back to Room: the call carried on.</p>
+        </aside>
+      </div>
+    </div>
+  );
+};
+
+// The usual React way, for comparison: only the chosen panel is drawn.
+const RoomWithAnd = () => {
+  const [ tab, setTab ] = useState( 'room' );
+
+  return (
+    <div className="fwpp-room">
+      <strong>Drawn only when chosen (&&)</strong>
+      <Tabs
+        label="Room, the usual way"
+        current={ tab }
+        onChange={ setTab }
+        tabs={ [
+          { id: 'room', label: 'Room' },
+          { id: 'chat', label: 'Chat' },
+        ] }
+      />
+      { tab === 'room' && <FakeCall name="&& tabs" /> }
+      { tab === 'chat' && <p>The chat. Go back to Room: the call started again from 0.</p> }
+    </div>
+  );
+};
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render(
+  <>
+    <Room />
+    <RoomWithAnd />
+  </>
+);
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>

@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>37.2: The pass is signed only after the checks, and ends with the room</title>
+<!-- ForumWP React course, 37.2: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 37.2
+// @title The pass is signed only after the checks, and ends with the room
+// @section 37.3
+// @click Join the room
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, Notice, Spinner } from '@wordpress/components'; // Added so this runs on its own
+import { QueryClient, QueryClientProvider, useMutation } from '@tanstack/react-query'; // Added so this runs on its own
+
+// Added so this runs on its own: a pretend server. Everything inside `server` stays on the
+// server in ForumWP Pro (src/Live/Live.php and Tokens.php). The browser only sees what enter() returns.
+const server = ( () => {
+  const SECRET = 'jitsi-app-secret-never-sent'; // forumwp_pro_live_secrets
+  const TTL = 2 * 60 * 60; // Tokens::TTL, in seconds
+  const now = () => Math.floor( Date.now() / 1000 );
+  // The room opened 5 minutes ago and closes in 40 minutes.
+  const closes = now() + 40 * 60;
+  const going = [ 'Ada' ];
+
+  const base64url = ( bytes ) =>
+    btoa( String.fromCharCode( ...new Uint8Array( bytes ) ) ).replace( /\+/g, '-' ).replace( /\//g, '_' ).replace( /=+$/, '' );
+  const text = ( s ) => new TextEncoder().encode( s );
+
+  // Tokens::expires(): TTL from now, or sooner when the room closes, but at least $least.
+  const expires = ( at, until, least = 60 ) => Math.max( at + least, Math.min( at + TTL, until ?? Infinity ) );
+
+  // Tokens::sign() with HS256: HMAC-SHA256 over "header.payload", with the secret.
+  const sign = async ( payload ) => {
+    const input = base64url( text( JSON.stringify( { alg: 'HS256', typ: 'JWT' } ) ) ) + '.' + base64url( text( JSON.stringify( payload ) ) );
+    const key = await crypto.subtle.importKey( 'raw', text( SECRET ), { name: 'HMAC', hash: 'SHA-256' }, false, [ 'sign' ] );
+
+    return input + '.' + base64url( await crypto.subtle.sign( 'HMAC', key, text( input ) ) );
+  };
+
+  // POST /forumwp-pro/v1/live/42/enter: Live::entry().
+  const enter = async ( viewer ) => {
+    console.log( 'POST /live/42/enter as', viewer );
+    await new Promise( ( r ) => setTimeout( r, 400 ) );
+    if ( ! going.includes( viewer ) ) {
+      throw { status: 403, message: 'Say you’re going to get in.' };
+    }
+    const iat = now();
+    const jwt = await sign( {
+      aud: 'jitsi',
+      iss: 'forumwp-app',
+      sub: 'meet.example.com',
+      room: 'forumwp-42-3f9a0c1d7b2e',
+      iat,
+      nbf: iat - 10,
+      exp: expires( iat, closes ),
+      context: { user: { id: '1', name: viewer, moderator: false } },
+    } );
+
+    return { provider: 'jitsi', domain: 'meet.example.com', room: 'forumwp-42-3f9a0c1d7b2e', jwt, user: { name: viewer } };
+  };
+
+  return { enter };
+} )();
+const proPost = ( path, viewer ) => server.enter( viewer ); // Added so this runs on its own
+
+// Added so this runs on its own: reads a JWT's payload, as Tokens::decode() does (it doesn't check it).
+const payloadOf = ( jwt ) => JSON.parse( atob( jwt.split( '.' )[ 1 ].replace( /-/g, '+' ).replace( /_/g, '/' ) ) );
+
+// From app/portal/live/Room.js
+const useEnter = ( postId, viewer ) =>
+  useMutation( { mutationFn: () => proPost( `/live/${ postId }/enter`, viewer ) } );
+
+// Stage, shortened: the button, the spinner, the server's refusal, then the pass.
+const Stage = ( { postId, viewer } ) => {
+  const enter = useEnter( postId, viewer );
+
+  if ( enter.error ) {
+    return (
+      <Notice status="error" isDismissible={ false }>
+        { enter.error.message }
+      </Notice>
+    );
+  }
+  if ( ! enter.data ) {
+    return enter.isPending ? (
+      <Spinner />
+    ) : (
+      <>
+        <p>Your camera and microphone stay off until you turn them on.</p>
+        <Button variant="primary" onClick={ () => enter.mutate() }>
+          Join the room
+        </Button>
+      </>
+    );
+  }
+  // In ForumWP Pro, JitsiStage now hands entry.jwt to Jitsi's IFrame API.
+  const pass = payloadOf( enter.data.jwt );
+  const left = Math.round( ( pass.exp - pass.iat ) / 60 );
+
+  return (
+    <div>
+      <p>The browser got: { Object.keys( enter.data ).join( ', ' ) } (no secret).</p>
+      <pre style={ { whiteSpace: 'pre-wrap', fontSize: 12 } }>{ JSON.stringify( pass, null, 1 ) }</pre>
+      <p>
+        This pass stops working in { left } minutes, when the room closes, not after the full two hours.
+      </p>
+    </div>
+  );
+};
+
+// Added so this runs on its own: Ada is going; Kemi isn't, so the server says no.
+const Demo = () => {
+  const [ viewer, setViewer ] = useState( 'Ada' );
+
+  return (
+    <div className="fwp-card" style={ { maxWidth: 560 } }>
+      <p>
+        Signed in as{ ' ' }
+        <select value={ viewer } onChange={ ( e ) => setViewer( e.target.value ) }>
+          <option>Ada</option>
+          <option>Kemi</option>
+        </select>
+      </p>
+      <Stage key={ viewer } postId={ 42 } viewer={ viewer } />
+    </div>
+  );
+};
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render(
+  <QueryClientProvider client={ new QueryClient() }>
+    <Demo />
+  </QueryClientProvider>
+);
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>
