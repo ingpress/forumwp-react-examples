@@ -1,0 +1,170 @@
+// @id 39.5
+// @title Kudos: once per item, a daily limit counted after the insert, and a button added through forumwp.postActions
+// @section 39.5
+// @click Give kudos on all three at once
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, RadioControl } from '@wordpress/components'; // Added so this runs on its own
+import { createHooks } from '@wordpress/hooks'; // Added so this runs on its own
+
+// Added so this runs on its own: wp.hooks, shared by ForumWP and ForumWP Pro.
+const hooks = createHooks();
+
+// Added so this runs on its own: a pretend kudos table. Every query takes a few milliseconds, so
+// requests sent together overlap. UNIQUE KEY once (object_type, object_id, giver_id).
+const LIMIT = 5;
+const wait = () => new Promise( ( r ) => setTimeout( r, 5 + Math.random() * 20 ) );
+const table = { rows: [], nextId: 1 };
+const resetTable = () => {
+  // Ada has given 4 kudos today already.
+  table.rows = [ 101, 102, 103, 104 ].map( ( post, i ) => ( { id: i + 1, giver: 'Ada', post } ) );
+  table.nextId = 5;
+};
+resetTable();
+const db = {
+  insertIgnore: async ( giver, post ) => {
+    await wait();
+    if ( table.rows.some( ( r ) => r.giver === giver && r.post === post ) ) {
+      return 0; // the unique key said no
+    }
+    table.rows.push( { id: table.nextId++, giver, post } );
+    return table.nextId - 1;
+  },
+  givenToday: async ( giver, upto = Infinity ) => {
+    await wait();
+    return table.rows.filter( ( r ) => r.giver === giver && r.id <= upto ).length;
+  },
+  remove: async ( id ) => {
+    await wait();
+    table.rows = table.rows.filter( ( r ) => r.id !== id );
+  },
+};
+
+// The first version: check the limit, then insert.
+const checkThenInsert = async ( giver, post ) => {
+  if ( ( await db.givenToday( giver ) ) >= LIMIT ) {
+    return 429;
+  }
+  return ( await db.insertIgnore( giver, post ) ) ? 200 : 409;
+};
+
+// Kudos::give(), in JavaScript: check (a shortcut), insert, then count again.
+const insertThenCount = async ( giver, post ) => {
+  if ( ( await db.givenToday( giver ) ) >= LIMIT ) {
+    return 429;
+  }
+  const id = await db.insertIgnore( giver, post );
+  if ( ! id ) {
+    return 409; // You already gave kudos for this.
+  }
+  if ( ( await db.givenToday( giver ) ) > LIMIT ) {
+    await db.remove( id );
+    return 429; // before any points or notification
+  }
+  return 200;
+};
+
+// Chapter 38.5's Usage::start(): count only the rows up to your own id.
+const insertThenCountUpTo = async ( giver, post ) => {
+  if ( ( await db.givenToday( giver ) ) >= LIMIT ) {
+    return 429;
+  }
+  const id = await db.insertIgnore( giver, post );
+  if ( ! id ) {
+    return 409;
+  }
+  if ( ( await db.givenToday( giver, id ) ) > LIMIT ) {
+    await db.remove( id );
+    return 429;
+  }
+  return 200;
+};
+
+const versions = { before: checkThenInsert, after: insertThenCount, upto: insertThenCountUpTo };
+let give = insertThenCount;
+
+// ForumWP Pro's button (app/portal/engagement/Kudos.js, shortened), added through forumwp.postActions.
+const PostKudosButton = ( { post } ) => {
+  const [ answer, setAnswer ] = useState( null );
+  return (
+    <Button
+      size="compact"
+      onClick={ async () => setAnswer( await give( 'Ada', post.id ) ) }
+    >
+      🙌 Kudos { answer && `(${ answer })` }
+    </Button>
+  );
+};
+hooks.addFilter( 'forumwp.postActions', 'forumwp-pro/kudos', ( items ) => [ ...items, PostKudosButton ] );
+
+// From ForumWP's app/portal/extend.js
+const list = ( value ) => ( Array.isArray( value ) ? value : [] );
+const components = ( name ) => list( hooks.applyFilters( name, [] ) ).filter( ( item ) => typeof item === 'function' );
+const postActions = () => components( 'forumwp.postActions' );
+
+// ForumWP's PostCard footer, shortened: add-ons' buttons go after the comments button.
+const PostCard = ( { post } ) => (
+  <div className="fwp-card">
+    <strong>{ post.title }</strong> <span className="fwp-muted">by { post.author }</span>
+    <div className="fwp-row">
+      <Button size="compact">💬 { post.commentCount } comments</Button>
+      { postActions().map( ( Extra, i ) => (
+        <Extra key={ i } post={ post } />
+      ) ) }
+    </div>
+  </div>
+);
+
+const posts = [
+  { id: 201, title: 'How I set up my first course', author: 'Tunde', commentCount: 4 },
+  { id: 202, title: 'Office hours notes', author: 'Kemi', commentCount: 2 },
+  { id: 203, title: 'Pricing tips', author: 'Mei', commentCount: 7 },
+];
+
+const Demo = () => {
+  const [ version, setVersion ] = useState( 'after' );
+  const [ result, setResult ] = useState( null );
+  const [ key, setKey ] = useState( 0 );
+  const choose = ( v ) => {
+    setVersion( v );
+    give = versions[ v ];
+  };
+  const allAtOnce = async () => {
+    resetTable();
+    const out = await Promise.all( posts.map( ( p ) => give( 'Ada', p.id ) ) );
+    const given = table.rows.length;
+    console.log( `${ version }: answers ${ out.join( ', ' ) }; Ada has given ${ given } of ${ LIMIT }` );
+    setResult( `Answers: ${ out.join( ', ' ) }. Ada has now given ${ given } kudos today (limit ${ LIMIT }).` );
+  };
+  const twice = async () => {
+    resetTable();
+    const out = await Promise.all( [ give( 'Ada', 201 ), give( 'Ada', 201 ) ] );
+    setResult( `Double click on one post: ${ out.join( ', ' ) }. Rows for it: ${ table.rows.filter( ( r ) => r.post === 201 ).length }.` );
+  };
+
+  return (
+    <div style={ { maxWidth: 600 } }>
+      <RadioControl
+        label="How Kudos::give() checks the daily limit"
+        selected={ version }
+        options={ [ { label: 'Check, then insert (the first version)', value: 'before' }, { label: 'Insert, then count again (1.0.0-beta.25)', value: 'after' }, { label: 'Insert, then count up to my id (Chapter 38.5)', value: 'upto' } ] }
+        onChange={ choose }
+      />
+      <p>Ada has given 4 of her 5 kudos today.</p>
+      <p>
+        <Button variant="primary" onClick={ allAtOnce }>Give kudos on all three at once</Button>{ ' ' }
+        <Button variant="secondary" onClick={ twice }>Double-click on one post</Button>{ ' ' }
+        <Button variant="tertiary" onClick={ () => { resetTable(); setResult( null ); setKey( ( k ) => k + 1 ); } }>Reset</Button>
+      </p>
+      { result && <p role="status"><strong>{ result }</strong></p> }
+      <div key={ key }>{ posts.map( ( p ) => <PostCard key={ p.id } post={ p } /> ) }</div>
+    </div>
+  );
+};
+
+document.head.insertAdjacentHTML( 'beforeend', `<style>
+  .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 10px 12px; margin: 8px 0; }
+  .fwp-row { display: flex; gap: 6px; margin-top: 6px; }
+  .fwp-muted { color: #757575; }
+</style>` ); // Added so this runs on its own
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <Demo /> );

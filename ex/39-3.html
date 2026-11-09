@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>39.3: Publishing a draft: screened like a new post when its author publishes it</title>
+<!-- ForumWP React course, 39.3: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 39.3
+// @title Publishing a draft: screened like a new post when its author publishes it
+// @section 39.3
+// @click Publish now
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, CheckboxControl, Notice, RadioControl, RangeControl } from '@wordpress/components'; // Added so this runs on its own
+
+// Added so this runs on its own: Tunde's original post (#7, published 20 minutes ago), and its
+// copy in the new space (#41), a draft marked copied_from: 7.
+const LIMIT = 3; // posts_per_hour
+const REFUSED = [ 'casino' ]; // ForumWP Pro's refused words
+const makeTable = ( recent, word ) => [
+  ...Array.from( { length: recent }, ( _, i ) => ( { id: 90 + i, user: 'Tunde', status: 'published', text: `Note ${ i + 1 }`, minutes: 10 + i } ) ),
+  { id: 7, user: 'Tunde', status: 'published', text: 'Office hours Bring your questions.', minutes: 20 },
+  {
+    id: 41,
+    user: 'Tunde',
+    status: 'draft',
+    text: `Office hours Bring your questions.${ word ? ' Prizes from our casino partner!' : '' }`,
+    minutes: 1,
+    meta: { copied_from: 7 },
+  },
+];
+
+// Spam::left_out(): drafts never count, nor the ids in `except`.
+const leftOut = ( row, except ) => row.status !== 'draft' && ! except.includes( row.id );
+
+// Spam::screen(), shortened: the hourly limit, repeats, then add-ons (Pro's refused words).
+const screen = ( table, user, text, except ) => {
+  if ( user === 'Ada' ) {
+    return { status: 'published', reason: '' }; // Moderators skip every check.
+  }
+  const recent = table.filter( ( r ) => r.user === user && r.minutes < 60 && leftOut( r, except ) );
+  if ( recent.length >= LIMIT ) {
+    return { error: 'You have posted a lot in the last hour. Please wait a while before posting again.' };
+  }
+  if ( recent.some( ( r ) => r.text.trim() === text.trim() ) ) {
+    return { error: 'You already posted that.' };
+  }
+  const word = REFUSED.find( ( w ) => text.toLowerCase().includes( w ) );
+  if ( word ) {
+    return { error: `“${ word }” isn’t allowed here. Please change it and try again.` };
+  }
+  return { status: 'published', reason: '' };
+};
+
+// Posts::publish_draft(), in JavaScript.
+const publishDraft = ( table, post, user, { screened, except } ) => {
+  if ( post.status !== 'draft' ) {
+    return { post };
+  }
+  let result = { status: 'published', reason: '' };
+  if ( screened && user === post.user ) {
+    result = screen( table, user, post.text, except ? [ post.meta.copied_from ] : [] );
+    if ( result.error ) {
+      return { error: result.error };
+    }
+  }
+  // UPDATE … SET status = 'published' WHERE id = 41 AND status = 'draft'
+  const done = post.status === 'draft' ? 1 : 0;
+  post.status = result.status;
+  return { post, fired: done === 1 && post.status === 'published' };
+};
+
+const Demo = () => {
+  const [ who, setWho ] = useState( 'Tunde' );
+  const [ recent, setRecent ] = useState( 1 );
+  const [ word, setWord ] = useState( false );
+  const [ screened, setScreened ] = useState( true );
+  const [ except, setExcept ] = useState( true );
+  const [ out, setOut ] = useState( null );
+
+  const publish = ( times ) => {
+    const table = makeTable( recent, word );
+    const draft = table.find( ( r ) => r.id === 41 );
+    const results = Array.from( { length: times }, () => publishDraft( table, draft, who, { screened, except } ) );
+    const fired = results.filter( ( r ) => r.fired ).length;
+    console.log( `${ who } publishes #41:`, results.map( ( r ) => r.error ?? r.post.status ).join( ', ' ), `· forumwp_post_published fired ${ fired }×` );
+    setOut( { results, fired, status: draft.status } );
+  };
+
+  return (
+    <div style={ { maxWidth: 600 } }>
+      <RadioControl
+        label="Who presses Publish now"
+        selected={ who }
+        options={ [ { label: 'Tunde, the draft’s author', value: 'Tunde' }, { label: 'Ada, a moderator', value: 'Ada' } ] }
+        onChange={ setWho }
+      />
+      <RangeControl label="Tunde’s other posts in the last hour" min={ 0 } max={ 3 } value={ recent } onChange={ setRecent } __nextHasNoMarginBottom __next40pxDefaultSize />
+      <CheckboxControl label="The draft mentions a casino" checked={ word } onChange={ setWord } __nextHasNoMarginBottom />
+      <CheckboxControl label="Screen it when its author publishes it (0.32.0)" checked={ screened } onChange={ setScreened } __nextHasNoMarginBottom />
+      <CheckboxControl label="Leave out the post it was copied from (except)" checked={ except } onChange={ setExcept } __nextHasNoMarginBottom />
+      <p>
+        <Button variant="primary" onClick={ () => publish( 1 ) }>Publish now</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => publish( 2 ) }>Double-click Publish now</Button>
+      </p>
+      { out && (
+        <div className="fwp-stack">
+          { out.results.map( ( r, i ) =>
+            r.error ? (
+              <Notice key={ i } status="error" isDismissible={ false }>{ r.error } (it stays a draft)</Notice>
+            ) : (
+              <Notice key={ i } status="success" isDismissible={ false }>Request { i + 1 }: post #41 is { r.post.status }.</Notice>
+            )
+          ) }
+          <p>
+            forumwp_post_published fired { out.fired }× · points for Tunde: +0 (Posts::is_copy(): a copy earns its author nothing)
+          </p>
+        </div>
+      ) }
+    </div>
+  );
+};
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <Demo /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>

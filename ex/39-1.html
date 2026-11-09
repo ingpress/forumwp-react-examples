@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>39.1: A new post status: which read paths let a draft through</title>
+<!-- ForumWP React course, 39.1: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 39.1
+// @title A new post status: which read paths let a draft through
+// @section 39.1
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { CheckboxControl } from '@wordpress/components'; // Added so this runs on its own
+
+// Added so this runs on its own: a pretend posts table. Post 4 is a draft: an event copied by
+// "Duplicate space…", written by Tunde, waiting for its date.
+const DRAFT = 'draft';
+const HIDDEN = 'hidden';
+const minutesAgo = ( m ) => Date.now() - m * 60000;
+const posts = [
+  { id: 1, user: 'Tunde', status: 'published', title: 'Welcome, new members', at: minutesAgo( 50 ) },
+  { id: 2, user: 'Tunde', status: 'published', title: 'Office hours notes', at: minutesAgo( 30 ) },
+  { id: 3, user: 'Kemi', status: 'pending', title: 'Cheap followers here', at: minutesAgo( 20 ) },
+  { id: 4, user: 'Tunde', status: DRAFT, title: 'Office hours (copy)', at: minutesAgo( 5 ) },
+  { id: 5, user: 'Ada', status: HIDDEN, title: 'Lesson 1: Setting up', at: minutesAgo( 90 ) },
+];
+// Ada moderates the space; Kemi is a member.
+const moderators = [ 'Ada' ];
+const canEdit = ( post, viewer ) => post.user === viewer || moderators.includes( viewer );
+
+// Every read path, written twice: before ForumWP knew about drafts, and as in 0.32.0.
+const paths = [
+  {
+    name: 'Feed (Posts::feed: status = \'published\')',
+    before: ( p ) => p.status === 'published',
+    after: ( p ) => p.status === 'published',
+  },
+  {
+    name: 'Search (Search::post_ids: status = \'published\')',
+    before: ( p ) => p.status === 'published',
+    after: ( p ) => p.status === 'published',
+  },
+  {
+    name: 'Can read the post (Policy::can_read_post)',
+    before: ( p, viewer ) => {
+      if ( p.status === 'published' ) {
+        return true;
+      }
+      // Anything else is an add-on's hidden post: the add-on decides (here: no).
+      return false;
+    },
+    after: ( p, viewer ) => {
+      if ( p.status === 'published' ) {
+        return true;
+      }
+      // Drafts: the space's hosts and moderators (and whoever wrote it).
+      if ( p.status === DRAFT ) {
+        return canEdit( p, viewer );
+      }
+      return false;
+    },
+  },
+  {
+    name: 'Can like it (PostsController::set_reaction)',
+    // Once moderators may read drafts, "may read it" is no longer enough.
+    before: ( p, viewer ) => canSee( p, viewer ),
+    after: ( p, viewer ) => p.status !== DRAFT && canSee( p, viewer ),
+  },
+  {
+    name: 'Tunde\'s posts in the last hour (Spam::recent_count)',
+    before: ( p ) => p.user === 'Tunde' && p.at > minutesAgo( 60 ),
+    after: ( p ) => p.user === 'Tunde' && p.at > minutesAgo( 60 ) && p.status !== DRAFT,
+  },
+];
+// Who can open a post at all, as Policy::can_read_post() in 0.32.0.
+const canSee = ( p, viewer ) => p.status === 'published' || ( p.status === DRAFT && canEdit( p, viewer ) );
+
+// What a draft SHOULD do on each path, for marking the wrong answers.
+const expected = [
+  { Ada: false, Kemi: false },
+  { Ada: false, Kemi: false },
+  { Ada: true, Kemi: false },
+  { Ada: false, Kemi: false },
+  { Ada: false, Kemi: false },
+];
+
+const Demo = () => {
+  const [ knows, setKnows ] = useState( false );
+  const draft = posts.find( ( p ) => p.status === DRAFT );
+
+  return (
+    <div style={ { maxWidth: 680 } }>
+      <CheckboxControl
+        label="ForumWP 0.32.0: every read path knows about drafts"
+        checked={ knows }
+        onChange={ setKnows }
+        __nextHasNoMarginBottom
+      />
+      <p>Does the draft “{ draft.title }” get through?</p>
+      <table className="fwp-table">
+        <thead>
+          <tr><th>Read path</th><th>Ada (moderator)</th><th>Kemi (member)</th></tr>
+        </thead>
+        <tbody>
+          { paths.map( ( path, i ) => {
+            const test = knows ? path.after : path.before;
+            return (
+              <tr key={ path.name }>
+                <td>{ path.name }</td>
+                { [ 'Ada', 'Kemi' ].map( ( viewer ) => {
+                  const got = test( draft, viewer );
+                  const wrong = got !== expected[ i ][ viewer ];
+                  return (
+                    <td key={ viewer } className={ wrong ? 'is-wrong' : 'is-right' }>
+                      { got ? 'yes' : 'no' }{ wrong ? ' (wrong)' : '' }
+                    </td>
+                  );
+                } ) }
+              </tr>
+            );
+          } ) }
+        </tbody>
+      </table>
+      <p>
+        Tunde's posts in the last hour:{ ' ' }
+        <strong>{ posts.filter( ( p ) => ( knows ? paths[ 4 ].after : paths[ 4 ].before )( p ) ).length }</strong>
+        { ' ' }(the limit is 3: { posts.filter( ( p ) => ( knows ? paths[ 4 ].after : paths[ 4 ].before )( p ) ).length >= 3 ? 'his next post is refused' : 'he can post again' })
+      </p>
+    </div>
+  );
+};
+
+document.head.insertAdjacentHTML( 'beforeend', `<style>
+  .fwp-table { border-collapse: collapse; width: 100%; }
+  .fwp-table th, .fwp-table td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
+  .is-wrong { background: #fde2e1; color: #8a2424; font-weight: 600; }
+  .is-right { background: #eaf7ec; }
+</style>` ); // Added so this runs on its own
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <Demo /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>

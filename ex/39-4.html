@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>39.4: Streak days in the member&#x27;s own time zone, and why the zone changes once a day</title>
+<!-- ForumWP React course, 39.4: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 39.4
+// @title Streak days in the member's own time zone, and why the zone changes once a day
+// @section 39.4
+// @click Try the trick
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, CheckboxControl } from '@wordpress/components'; // Added so this runs on its own
+
+// Added so this runs on its own: a pretend clock, user meta and streak_days table for Kemi.
+const DAY = 24 * 60 * 60 * 1000;
+const START = Date.parse( '2026-11-09T10:30:00Z' );
+const ZONES = [ 'Pacific/Pago_Pago', 'Africa/Lagos', 'Pacific/Kiritimati' ]; // UTC-11, UTC+1, UTC+14
+let state;
+const reset = () => {
+  // Kemi's zone was set to Lagos a week ago.
+  state = { now: START, meta: { zone: 'Africa/Lagos', zoneAt: START - 7 * DAY }, days: new Set(), log: [] };
+};
+reset();
+
+// Streaks::day(): the member's date (Y-m-d) at a moment, in their zone.
+const dayIn = ( zone, time ) =>
+  new Intl.DateTimeFormat( 'en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' } ).format( time );
+
+// Streaks::set_zone(). With `oncePerDay`, a change waits a day after the last one.
+const setZone = ( name, { oncePerDay } ) => {
+  const { zone, zoneAt } = state.meta;
+  if ( zone !== name && ( ! oncePerDay || zone === '' || zoneAt <= state.now - DAY ) ) {
+    state.meta = { zone: name, zoneAt: state.now };
+  }
+  return state.meta.zone;
+};
+
+// Streaks::record(). With `neverBefore`, a day before the latest one counts on the latest.
+const record = ( { neverBefore } ) => {
+  let day = dayIn( state.meta.zone, state.now );
+  const latest = [ ...state.days ].sort().pop() ?? '';
+  if ( neverBefore && latest !== '' && latest > day ) {
+    day = latest;
+  }
+  state.days.add( day ); // INSERT IGNORE: the primary key is (user_id, day)
+  return day;
+};
+
+// Streaks::runs(), shortened to the current run's length (no grace day).
+const streak = () => {
+  const days = [ ...state.days ].sort();
+  let run = 0;
+  let prev = null;
+  for ( const d of days ) {
+    const at = Date.parse( `${ d }T00:00:00Z` );
+    run = prev !== null && Math.round( ( at - prev ) / DAY ) - 1 <= 0 ? run + 1 : 1;
+    prev = at;
+  }
+  return run;
+};
+
+const Demo = () => {
+  const [ oncePerDay, setOnce ] = useState( true );
+  const [ neverBefore, setNever ] = useState( true );
+  const [ , redraw ] = useState( 0 );
+  const fixes = { oncePerDay, neverBefore };
+
+  // What the app does: send the browser's zone (POST /me/timezone), then the member posts.
+  const postFrom = ( zone ) => {
+    const kept = setZone( zone, fixes );
+    const day = record( fixes );
+    const line = `${ new Date( state.now ).toISOString().slice( 11, 16 ) } UTC: browser says ${ zone }, zone kept ${ kept }, post counts on ${ day }`;
+    console.log( line );
+    state.log.push( line );
+    state.now += 2 * 60 * 1000;
+    redraw( ( n ) => n + 1 );
+  };
+  const trick = () => {
+    reset();
+    postFrom( 'Africa/Lagos' );
+    postFrom( 'Pacific/Pago_Pago' );
+    postFrom( 'Pacific/Kiritimati' );
+  };
+
+  return (
+    <div style={ { maxWidth: 640 } }>
+      <CheckboxControl label="The zone changes at most once a day" checked={ oncePerDay } onChange={ setOnce } __nextHasNoMarginBottom />
+      <CheckboxControl label="Never record a day before the latest one" checked={ neverBefore } onChange={ setNever } __nextHasNoMarginBottom />
+      <p>
+        <Button variant="primary" onClick={ trick }>Try the trick</Button>{ ' ' }
+        { ZONES.map( ( z ) => (
+          <Button key={ z } variant="secondary" size="compact" onClick={ () => postFrom( z ) }>Post from { z.split( '/' )[ 1 ] }</Button>
+        ) ) }{ ' ' }
+        <Button variant="tertiary" onClick={ () => { state.now += DAY; redraw( ( n ) => n + 1 ); } }>A day later</Button>{ ' ' }
+        <Button variant="tertiary" onClick={ () => { reset(); redraw( ( n ) => n + 1 ); } }>Reset</Button>
+      </p>
+      <p>
+        Now: { new Date( state.now ).toISOString().slice( 0, 16 ).replace( 'T', ' ' ) } UTC · Kemi’s zone: { state.meta.zone }
+      </p>
+      <p>
+        Days recorded: <strong>{ [ ...state.days ].sort().join( ', ' ) || 'none' }</strong> · streak: <strong>{ streak() }</strong>
+      </p>
+      <ol>{ state.log.map( ( line, i ) => <li key={ i }>{ line }</li> ) }</ol>
+    </div>
+  );
+};
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <Demo /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>
