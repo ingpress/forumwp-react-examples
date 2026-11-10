@@ -79,7 +79,7 @@ footer { color: var(--muted); font-size: 13px; margin-top: 40px; }
   <header class="top">
     <span class="eyebrow">React + WordPress REST API, from Zero</span>
     <h1>ForumWP React Examples</h1>
-    <p class="lede">289 examples from the course, each a single HTML page that runs as it is. Press <b>Run</b>, or open one in a sandbox to change the code and see what happens.</p>
+    <p class="lede">295 examples from the course, each a single HTML page that runs as it is. Press <b>Run</b>, or open one in a sandbox to change the code and see what happens.</p>
     <ul class="how">
       <li><b>Run it anywhere</b>Each page loads React and WordPress's own components from a CDN and compiles the JSX in your browser. No install, no build.</li>
       <li><b>Look at the console</b>Console output also appears under the example. React's development warnings are on, so you see the same messages the book quotes.</li>
@@ -128,6 +128,7 @@ footer { color: var(--muted); font-size: 13px; margin-top: 40px; }
 <a href="#ch-38"><span>38</span>AI helpers</a>
 <a href="#ch-39"><span>39</span>Duplicate, streaks, kudos and member sources</a>
 <a href="#ch-40"><span>40</span>My home and promotions</a>
+<a href="#ch-41"><span>41</span>Letting AI tools in: the Abilities API</a>
     </nav>
     <main>
       <div class="search"><label class="eyebrow" for="filter">Find an example</label><input id="filter" type="search" placeholder="Type a number or a word, e.g. 8.3 or useEffect" autocomplete="off"></div>
@@ -3058,6 +3059,67 @@ footer { color: var(--muted); font-size: 13px; margin-top: 40px; }
     <button class="btn" data-open="jsfiddle" data-slug="40-6" data-title="Example 40.6: The offer&#x27;s button: a link safe to share, a redirect that can&#x27;t be pointed elsewhere, and a purchase credited once">JSFiddle</button>
     <button class="btn" data-open="codesandbox" data-slug="40-6" data-title="Example 40.6: The offer&#x27;s button: a link safe to share, a redirect that can&#x27;t be pointed elsewhere, and a purchase credited once">CodeSandbox</button>
     <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch40/40.6-offer-link-credit.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li></ul></section>
+<section class="chapter" id="ch-41"><h2><span class="chnum">Chapter 41</span>Letting AI tools in: the Abilities API</h2><ul class="list"><li class="ex" id="ex-41-1">
+  <div class="ex-head"><span class="num">41.1</span><h3>What an ability is: registered on WordPress&#x27;s hooks, then run in its order (input, permission, execute, output)</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/41-1.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="41-1" data-title="Example 41.1: What an ability is: registered on WordPress&#x27;s hooks, then run in its order (input, permission, execute, output)">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="41-1" data-title="Example 41.1: What an ability is: registered on WordPress&#x27;s hooks, then run in its order (input, permission, execute, output)">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="41-1" data-title="Example 41.1: What an ability is: registered on WordPress&#x27;s hooks, then run in its order (input, permission, execute, output)">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch41/41.1-register-and-run.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li><li class="ex" id="ex-41-2">
+  <div class="ex-head"><span class="num">41.2</span><h3>Annotations pick the HTTP method: /wp-abilities/v1 over REST, and the same abilities through the MCP Adapter</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/41-2.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="41-2" data-title="Example 41.2: Annotations pick the HTTP method: /wp-abilities/v1 over REST, and the same abilities through the MCP Adapter">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="41-2" data-title="Example 41.2: Annotations pick the HTTP method: /wp-abilities/v1 over REST, and the same abilities through the MCP Adapter">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="41-2" data-title="Example 41.2: Annotations pick the HTTP method: /wp-abilities/v1 over REST, and the same abilities through the MCP Adapter">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch41/41.2-rest-and-mcp.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li><li class="ex" id="ex-41-3">
+  <div class="ex-head"><span class="num">41.3</span><h3>Every rule applies once: abilities run the app&#x27;s own REST routes with rest_do_request()</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/41-3.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="41-3" data-title="Example 41.3: Every rule applies once: abilities run the app&#x27;s own REST routes with rest_do_request()">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="41-3" data-title="Example 41.3: Every rule applies once: abilities run the app&#x27;s own REST routes with rest_do_request()">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="41-3" data-title="Example 41.3: Every rule applies once: abilities run the app&#x27;s own REST routes with rest_do_request()">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch41/41.3-reuse-the-routes.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li><li class="ex" id="ex-41-4">
+  <div class="ex-head"><span class="num">41.4</span><h3>A closed input: additionalProperties false, capped limits, and fields an AI tool tries to slip through</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/41-4.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="41-4" data-title="Example 41.4: A closed input: additionalProperties false, capped limits, and fields an AI tool tries to slip through">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="41-4" data-title="Example 41.4: A closed input: additionalProperties false, capped limits, and fields an AI tool tries to slip through">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="41-4" data-title="Example 41.4: A closed input: additionalProperties false, capped limits, and fields an AI tool tries to slip through">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch41/41.4-closed-input.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li><li class="ex" id="ex-41-5">
+  <div class="ex-head"><span class="num">41.5</span><h3>Who may run it: plain booleans, the setting checked on every run, a filter that can only refuse, and the settings card</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/41-5.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="41-5" data-title="Example 41.5: Who may run it: plain booleans, the setting checked on every run, a filter that can only refuse, and the settings card">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="41-5" data-title="Example 41.5: Who may run it: plain booleans, the setting checked on every run, a filter that can only refuse, and the settings card">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="41-5" data-title="Example 41.5: Who may run it: plain booleans, the setting checked on every run, a filter that can only refuse, and the settings card">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch41/41.5-permissions.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li><li class="ex" id="ex-41-6">
+  <div class="ex-head"><span class="num">41.6</span><h3>The review&#x27;s lessons: secret spaces that answer like missing ones, the leave-space leak, and emails for site admins only</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/41-6.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="41-6" data-title="Example 41.6: The review&#x27;s lessons: secret spaces that answer like missing ones, the leave-space leak, and emails for site admins only">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="41-6" data-title="Example 41.6: The review&#x27;s lessons: secret spaces that answer like missing ones, the leave-space leak, and emails for site admins only">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="41-6" data-title="Example 41.6: The review&#x27;s lessons: secret spaces that answer like missing ones, the leave-space leak, and emails for site admins only">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch41/41.6-review-lessons.jsx" target="_blank" rel="noopener">Source</a>
   </div>
 </li></ul></section>
       <footer>Examples for the ForumWP React course by Collins Agbonghama. Code samples use React 18.3 and @wordpress/components 29 from esm.sh. Sandbox links send the example's code to that service.</footer>

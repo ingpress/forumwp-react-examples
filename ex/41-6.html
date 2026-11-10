@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>41.6: The review&#x27;s lessons: secret spaces that answer like missing ones, the leave-space leak, and emails for site admins only</title>
+<!-- ForumWP React course, 41.6: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 41.6
+// @title The review's lessons: secret spaces that answer like missing ones, the leave-space leak, and emails for site admins only
+// @section 41.7
+// @click Tunde probes create-post
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, RadioControl } from '@wordpress/components'; // Added so this runs on its own
+
+// Added so this runs on its own: the community. Tunde is a member, but not of Hush.
+class WP_Error {
+  constructor( code, message, data = {} ) {
+    Object.assign( this, { code, message, data } );
+  }
+}
+const SPACES = [
+  { id: 1, slug: 'general', title: 'General', privacy: 'public', description: 'Say hello.', members: [ 7, 8 ], tags: [], answers: false },
+  { id: 2, slug: 'help-desk', title: 'Help desk', privacy: 'public', description: 'Ask anything.', members: [ 7, 8 ], tags: [ 'Billing' ], answers: true },
+  { id: 3, slug: 'hush', title: 'Hush', privacy: 'secret', description: 'Planning the spring retreat.', members: [ 8, 9 ], tags: [ 'Plans', 'Budget' ], answers: false },
+];
+const USERS = [
+  { id: 1, name: 'Ada', email: 'ada@example.org', siteAdmin: true },
+  { id: 7, name: 'Tunde', email: 'tunde@example.org' },
+  { id: 8, name: 'Kemi', email: 'kemi@example.org' },
+  { id: 9, name: 'Mei', email: 'mei@example.org', communityAdmin: true },
+];
+let currentUser = 7;
+const user = () => USERS.find( ( u ) => u.id === currentUser );
+const roleOf = ( space, id ) => ( space.members.includes( id ) ? 'member' : null );
+const isCommunityAdmin = ( id ) => !! USERS.find( ( u ) => u.id === id )?.communityAdmin || !! USERS.find( ( u ) => u.id === id )?.siteAdmin;
+const canList = ( space, id ) => space.privacy !== 'secret' || roleOf( space, id ) !== null || isCommunityAdmin( id );
+const find = ( ref ) => SPACES.find( ( s ) => s.id === Number( ref ) || s.slug === String( ref ) ) ?? null;
+const present = ( s ) => ( { id: s.id, title: s.title, description: s.description, privacy: s.privacy, memberCount: s.members.length, isMember: roleOf( s, currentUser ) !== null } );
+const notFound = () => new WP_Error( 'forumwp_not_found', 'This does not exist, or you do not have access to it.', { status: 404 } );
+const bad = ( code, message ) => new WP_Error( code, message, { status: 400 } );
+
+// Abilities::space(): first a lookup only; after the review, a secret space the person can't
+// see (and isn't in) is null, exactly like a space that doesn't exist.
+const abilitySpace = ( ref, fixed ) => {
+  const space = find( ref );
+  if ( ! fixed ) {
+    return space;
+  }
+  return space && ( roleOf( space, currentUser ) !== null || canList( space, currentUser ) ) ? space : null;
+};
+
+// PostsController::create() (the app's route): it never told outsiders anything.
+const createRoute = ( space ) => ( canList( space, currentUser ) ? { id: 42, status: 'published' } : new WP_Error( 'forumwp_not_found', 'This post or space does not exist, or you do not have access to it.', { status: 404 } ) );
+
+// WriteAbilities::create_post(): it checks things about the space before the route runs.
+const createPost = ( input, fixed ) => {
+  const space = abilitySpace( input.space, fixed );
+  if ( ! space ) {
+    return notFound();
+  }
+  if ( input.type === 'question' && ! space.answers ) {
+    return bad( 'forumwp_no_questions', 'This space doesn’t take questions. Post with type "post", or pick a forum space that takes questions (see list-spaces).' );
+  }
+  if ( input.tag && ! space.tags.some( ( t ) => t.toLowerCase() === input.tag.toLowerCase() ) ) {
+    return bad( 'forumwp_bad_tag', 'That tag is not one of the space’s tags (see get-space).' );
+  }
+  return createRoute( space );
+};
+
+// SpacesController::leave() (DELETE /spaces/{id}/membership), before and after.
+const leaveRoute = ( id, fixed ) => {
+  const space = find( id );
+  if ( ! space || ( fixed && roleOf( space, currentUser ) === null && ! canList( space, currentUser ) ) ) {
+    return new WP_Error( 'forumwp_space_not_found', 'Space not found.', { status: 404 } );
+  }
+  // Spaces::leave(), then the space as it now is (leaving one you aren't in changes nothing).
+  return present( { ...space, members: space.members.filter( ( m ) => m !== currentUser ) } );
+};
+
+// Shape::member(): emails for "admins". First Policy::is_admin() (community admins), then
+// Export::allowed() (site admins, who see emails in wp-admin and the member export).
+const listMembers = ( fixed ) =>
+  USERS.map( ( m ) => ( { id: m.id, name: m.name, ...( ( fixed ? user().siteAdmin : isCommunityAdmin( currentUser ) ) ? { email: m.email } : {} ) } ) );
+
+const show = ( r ) => ( r instanceof WP_Error ? `${ r.data.status } ${ r.code }` : `200 ${ JSON.stringify( r ) }` );
+
+const Demo = () => {
+  const [ version, setVersion ] = useState( 'before' );
+  const [ log, setLog ] = useState( [] );
+  const fixed = version === 'after';
+  const say = ( lines ) => {
+    lines.forEach( ( l ) => console.log( l ) );
+    setLog( ( old ) => [ ...old, ...lines ] );
+  };
+  const probe = () => {
+    currentUser = 7;
+    const lines = [];
+    for ( const ref of [ 'no-such-space', 'hush', 3 ] ) {
+      for ( const extra of [ { tag: 'Nope' }, { tag: 'plans' }, { type: 'question', title: 'Why?' } ] ) {
+        const input = { space: ref, body: 'Hi', ...extra };
+        lines.push( `Tunde: create-post ${ JSON.stringify( input ) } → ${ show( createPost( input, fixed ) ) }` );
+      }
+    }
+    say( lines );
+  };
+  const leave = () => {
+    currentUser = 7;
+    say( [ 1, 2, 3, 4 ].map( ( id ) => `Tunde: DELETE /forumwp/v1/spaces/${ id }/membership → ${ show( leaveRoute( id, fixed ) ) }` ) );
+  };
+  const members = ( id ) => {
+    currentUser = id;
+    say( [ `${ user().name } (${ user().siteAdmin ? 'a site admin' : user().communityAdmin ? 'a community admin, not a site admin' : 'a member' }): list-members → ${ JSON.stringify( listMembers( fixed ) ) }` ] );
+  };
+
+  return (
+    <div style={ { maxWidth: 760 } }>
+      <RadioControl
+        label="ForumWP's abilities"
+        selected={ version }
+        options={ [ { label: 'The first version', value: 'before' }, { label: 'After the review (ForumWP 0.34.0)', value: 'after' } ] }
+        onChange={ ( v ) => { setVersion( v ); setLog( [] ); } }
+      />
+      <p>
+        <Button variant="primary" onClick={ probe }>Tunde probes create-post</Button>{ ' ' }
+        <Button variant="secondary" onClick={ leave }>Tunde leaves spaces 1 to 4</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => members( 9 ) }>Mei lists members</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => members( 1 ) }>Ada lists members</Button>{ ' ' }
+        <Button variant="tertiary" onClick={ () => setLog( [] ) }>Clear</Button>
+      </p>
+      <ol className="fwp-log">{ log.map( ( line, i ) => <li key={ i }>{ line }</li> ) }</ol>
+    </div>
+  );
+};
+
+document.head.insertAdjacentHTML( 'beforeend', `<style>
+  .fwp-log li { word-break: break-word; margin-bottom: 4px; font-size: 13px; }
+</style>` ); // Added so this runs on its own
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <Demo /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>

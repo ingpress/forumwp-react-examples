@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>41.5: Who may run it: plain booleans, the setting checked on every run, a filter that can only refuse, and the settings card</title>
+<!-- ForumWP React course, 41.5: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 41.5
+// @title Who may run it: plain booleans, the setting checked on every run, a filter that can only refuse, and the settings card
+// @section 41.5
+// @click Run all four
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, Card, CardBody, CardHeader, ExternalLink, RadioControl, SelectControl, ToggleControl } from '@wordpress/components'; // Added so this runs on its own
+
+// Added so this runs on its own: WP_Error, filters, and WP_Ability::execute()'s permission step.
+class WP_Error {
+  constructor( code, message, data = {} ) {
+    Object.assign( this, { code, message, data } );
+  }
+}
+const filters = {};
+const add_filter = ( hook, fn ) => ( filters[ hook ] = [ fn ] );
+const remove_all_filters = ( hook ) => delete filters[ hook ];
+const apply_filters = ( hook, value, ...args ) => ( filters[ hook ] ?? [] ).reduce( ( v, fn ) => fn( v, ...args ), value );
+const php_bool = ( v ) => !! v; // PHP's (bool) and &&: any object, a WP_Error too, is true
+const runAbility = ( ability, input ) => {
+  const result = ability.permission_callback( input );
+  if ( result !== true ) {
+    if ( result instanceof WP_Error ) {
+      console.warn( `Notice: WP_Ability::execute was called incorrectly. ${ result.message }` ); // _doing_it_wrong()
+    }
+    return `refused: Ability "${ ability.name }" does not have necessary permission.`;
+  }
+  return `runs: ${ ability.execute_callback( input ) }`;
+};
+
+// Added so this runs on its own: who is signed in, and the saved setting.
+const PEOPLE = { 0: 'a visitor (not signed in)', 7: 'Tunde, a member', 9: 'Mei, a community admin' };
+let currentUser = 7;
+let saved = 'all';
+const get_current_user_id = () => currentUser;
+const isAdmin = ( user ) => user === 9;
+
+// ForumWP's abilities (shortened), and one from an add-on whose permission_callback returns a
+// WP_Error to explain itself, as many REST permission callbacks do.
+const DEFINITIONS = {
+  'forumwp/list-spaces': { execute_callback: () => '2 spaces' },
+  'forumwp/create-post': { write: true, execute_callback: () => 'post 42 created' },
+  'forumwp/get-community-stats': { permission_callback: () => isAdmin( get_current_user_id() ), execute_callback: () => '41 members' },
+  'my-addon/list-badges': {
+    permission_callback: () => isAdmin( get_current_user_id() ) || new WP_Error( 'my_addon_admins_only', 'Badges are for community admins.' ),
+    execute_callback: () => '6 badges',
+  },
+};
+
+// Abilities::allowed(): signed in, the setting (read at this moment), then the filter.
+const allowed = ( name, write, input, how ) => {
+  // Not ForumWP (registerOnly): trust that what's registered matches the setting.
+  const mode = how.registerOnly ? 'all' : saved;
+  const user = get_current_user_id();
+  const ok = user > 0 && mode !== 'off' && ( ! write || mode === 'all' );
+  if ( how.filterCanAllow ) {
+    // Not ForumWP: the filter gets the answer, so a filter returning true overrules it.
+    return php_bool( apply_filters( 'forumwp_ability_allowed', ok, name, input, user ) );
+  }
+  return ok && php_bool( apply_filters( 'forumwp_ability_allowed', true, name, input, user ) );
+};
+// Abilities::prepare(): one permission_callback that always answers true or false.
+const prepare = ( name, args, how ) => {
+  const check = args.permission_callback;
+  const write = !! args.write;
+  const own = ( input ) => ( how.loose ? php_bool( check( input ) ) : check( input ) === true );
+  return {
+    name,
+    ...args,
+    permission_callback: ( input ) => allowed( name, write, input, how ) && ( ! check || own( input ) ),
+  };
+};
+// Abilities::register_abilities(): on each page load, with the setting at that moment.
+const loadPage = ( how ) => {
+  const registry = {};
+  if ( saved !== 'off' ) {
+    Object.entries( DEFINITIONS ).forEach( ( [ name, args ] ) => {
+      if ( saved === 'read' && args.write ) {
+        return;
+      }
+      registry[ name ] = prepare( name, args, how );
+    } );
+  }
+  return registry;
+};
+
+// ForumWP, app/admin/AbilitiesCard.js (shortened): one setting, three values, two toggles.
+function AbilitiesCard( { form, set } ) {
+  const on = form.abilities !== 'off';
+  return (
+    <Card>
+      <CardHeader><h2 style={ { margin: 0, fontSize: 16 } }>AI tools and other apps</h2></CardHeader>
+      <CardBody>
+        <p className="description">
+          AI assistants, automation tools and other plugins can read the community and take part in it for a member who signs them in.{ ' ' }
+          <ExternalLink href="https://developer.wordpress.org/news/2026/02/from-abilities-to-ai-agents-introducing-the-wordpress-mcp-adapter/">How AI tools connect</ExternalLink>
+        </p>
+        <ToggleControl
+          __nextHasNoMarginBottom
+          label="Let AI tools and other apps use the community"
+          checked={ on }
+          onChange={ ( value ) => set( 'abilities' )( value ? 'all' : 'off' ) }
+        />
+        { on && (
+          <ToggleControl
+            __nextHasNoMarginBottom
+            label="Let them post, reply and make changes"
+            help={ form.abilities === 'all' ? 'They can post, reply, react, join spaces, send messages, invite people and, for moderators, approve or remove content.' : 'Read only: they can find and read posts, members and events, but not change anything.' }
+            checked={ form.abilities === 'all' }
+            onChange={ ( value ) => set( 'abilities' )( value ? 'all' : 'read' ) }
+          />
+        ) }
+      </CardBody>
+    </Card>
+  );
+}
+
+const Demo = () => {
+  const [ form, setForm ] = useState( { abilities: 'all' } );
+  const [ user, setUser ] = useState( '7' );
+  const [ addon, setAddon ] = useState( 'none' );
+  const [ how, setHow ] = useState( 'forumwp' );
+  const [ registry, setRegistry ] = useState( () => loadPage( {} ) );
+  const [ loadedWith, setLoadedWith ] = useState( 'all' );
+  const [ log, setLog ] = useState( [] );
+  // set( key )( value ): the settings screen's setter, one key at a time. Saving is instant here.
+  const set = ( key ) => ( value ) => {
+    saved = value;
+    setForm( ( f ) => ( { ...f, [ key ]: value } ) );
+  };
+  const options = {
+    registerOnly: how === 'register-only',
+    filterCanAllow: how === 'filter-can-allow',
+    loose: how === 'loose',
+  };
+  const reload = () => {
+    setRegistry( loadPage( options ) );
+    setLoadedWith( saved );
+    setLog( ( l ) => [ ...l, `Page loaded with the setting "${ saved }": ${ Object.keys( loadPage( options ) ).length } abilities registered.` ] );
+  };
+  const run = ( name ) => {
+    currentUser = Number( user );
+    remove_all_filters( 'forumwp_ability_allowed' );
+    if ( addon === 'true' ) {
+      add_filter( 'forumwp_ability_allowed', () => true ); // __return_true
+    }
+    if ( addon === 'tunde' ) {
+      add_filter( 'forumwp_ability_allowed', ( ok, n, input, u ) => ! ( u === 7 && n === 'forumwp/create-post' ) && ok );
+    }
+    const ability = registry[ name ];
+    // Rebuilt with the chosen version, as the page that registered them would have.
+    const line = `${ PEOPLE[ currentUser ] } → ${ name }: ${ ability ? runAbility( prepare( name, DEFINITIONS[ name ], options ), {} ) : 'not registered on this page load' }`;
+    console.log( line );
+    return line;
+  };
+  const NAMES = Object.keys( DEFINITIONS );
+
+  return (
+    <div style={ { maxWidth: 720 } }>
+      <AbilitiesCard form={ form } set={ set } />
+      <p className="fwp-muted">Saved setting: <code>{ form.abilities }</code>. Abilities on this page were registered with <code>{ loadedWith }</code>. <Button variant="link" onClick={ reload }>Load the page again</Button></p>
+      <SelectControl __next40pxDefaultSize label="Signed in as" value={ user } options={ Object.entries( PEOPLE ).map( ( [ value, label ] ) => ( { value, label } ) ) } onChange={ setUser } __nextHasNoMarginBottom />
+      <SelectControl
+        __next40pxDefaultSize
+        label="An add-on's forumwp_ability_allowed filter"
+        value={ addon }
+        options={ [ { value: 'none', label: 'None' }, { value: 'true', label: '__return_true ("let everyone use AI tools")' }, { value: 'tunde', label: 'Refuse create-post to Tunde' } ] }
+        onChange={ setAddon }
+        __nextHasNoMarginBottom
+      />
+      <RadioControl
+        label="Abilities::prepare() and allowed()"
+        selected={ how }
+        options={ [
+          { label: 'ForumWP: setting checked on every run; $allowed && filter( true ); true === $check( $input )', value: 'forumwp' },
+          { label: 'Setting checked only when registering', value: 'register-only' },
+          { label: 'The filter gets $allowed (and can say true)', value: 'filter-can-allow' },
+          { label: 'allowed() && $check( $input ), without true ===', value: 'loose' },
+        ] }
+        onChange={ ( v ) => { setHow( v ); setLog( [] ); } }
+      />
+      <p>
+        { NAMES.map( ( n ) => (
+          <Button key={ n } variant="secondary" size="compact" style={ { margin: '0 6px 6px 0' } } onClick={ () => setLog( ( l ) => [ ...l, run( n ) ] ) }>{ n }</Button>
+        ) ) }
+      </p>
+      <p><Button variant="primary" onClick={ () => setLog( ( l ) => [ ...l, ...NAMES.map( run ) ] ) }>Run all four</Button></p>
+      <ol className="fwp-log">{ log.map( ( line, i ) => <li key={ i }>{ line }</li> ) }</ol>
+    </div>
+  );
+};
+
+document.head.insertAdjacentHTML( 'beforeend', `<style>
+  .fwp-log li { word-break: break-word; margin-bottom: 4px; font-size: 13px; }
+  .fwp-muted { color: #757575; }
+  .description { color: #555; }
+</style>` ); // Added so this runs on its own
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <Demo /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>
