@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>40.6: The offer&#x27;s button: a link safe to share, a redirect that can&#x27;t be pointed elsewhere, and a purchase credited once</title>
+<!-- ForumWP React course, 40.6: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 40.6
+// @title The offer's button: a link safe to share, a redirect that can't be pointed elsewhere, and a purchase credited once
+// @section 40.7
+// @click Tunde clicks the button
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, RadioControl, TextControl } from '@wordpress/components'; // Added so this runs on its own
+
+// Added so this runs on its own: a pretend WordPress. A nonce belongs to one action and one
+// user's session; wp_verify_nonce() checks both.
+const DAY = 24 * 60 * 60 * 1000;
+const HOME = 'https://community.test/';
+const PORTAL = 'https://community.test/community/';
+const sessions = { tunde: 'k2', kemi: 'p9', mei: 'q4' };
+const hash = ( text ) => [ ...text ].reduce( ( h, c ) => ( h * 33 + c.charCodeAt( 0 ) ) >>> 0, 5381 ).toString( 16 ).padStart( 8, '0' );
+const wp_create_nonce = ( action, user ) => hash( `${ action }|${ user }|${ sessions[ user ] }` ).slice( 0, 10 );
+const wp_verify_nonce = ( nonce, action, user ) => !! user && nonce === wp_create_nonce( action, user );
+
+let now = Date.parse( '2026-11-10T09:00:00Z' );
+const promos = {
+  1: { id: 1, status: 'live', url: 'https://shop.test/founders/checkout', product: 'profilepress:12' },
+  2: { id: 2, status: 'scheduled', url: 'https://shop.test/black-friday-secret-80-off', product: 'profilepress:30' },
+};
+const managers = [ 'mei' ];
+const db = { stats: [], sales: [], posts: [] };
+
+// The first version: a REST route, with the member's wp_rest nonce in the address.
+const goUrlBefore = ( id, user ) => `${ HOME }wp-json/forumwp-pro/v1/promotions/${ id }/go?_wpnonce=${ wp_create_nonce( 'wp_rest', user ) }`;
+// ForumWP Pro, src/Promotions/Tracking.php: go_url(). A nonce for this promotion only.
+const goUrl = ( id, user ) => `${ HOME }?forumwp_offer=${ id }&offer_nonce=${ wp_create_nonce( `forumwp_offer_${ id }`, user ) }`;
+
+// Promotions::shows_to(), shortened: live, and not for its managers (Mei is a community admin).
+const showsTo = ( promo, user ) => promo.status === 'live' && ! managers.includes( user );
+
+// Tracking::follow(): where the link goes, and whether the click counts. The first version
+// sent everyone to any promotion's link and counted without a nonce of its own.
+const follow = ( id, user, place, nonce, { first = false } = {} ) => {
+  const promo = promos[ id ] ?? null;
+  const url = promo && user && ( first || promo.status === 'live' || managers.includes( user ) ) ? promo.url : '';
+  if ( promo && user && ( first || wp_verify_nonce( nonce, `forumwp_offer_${ id }`, user ) ) && showsTo( promo, user ) ) {
+    db.stats.push( { promo_id: id, user_id: user, clicked_at: now, place } ); // Tracking::click()
+  }
+  return url !== '' ? url : PORTAL;
+};
+
+// A cookie-authenticated REST request (rest_cookie_check_errors(), Chapter 14.8).
+const restPost = ( user, nonce, title ) => {
+  if ( ! wp_verify_nonce( nonce, 'wp_rest', user ) ) {
+    return '403 rest_cookie_invalid_nonce: Cookie check failed';
+  }
+  db.posts.push( { title, by: user } );
+  return `201 Created: "${ title }" posted as ${ user }`;
+};
+
+// Tracking::credit(): the last click on a promotion selling it, within 7 days, credited once.
+const CREDIT_DAYS = 7;
+const credit = ( user, product, purchase ) => {
+  const ids = Object.values( promos ).filter( ( p ) => p.product === product ).map( ( p ) => p.id );
+  const click = db.stats
+    .filter( ( s ) => s.user_id === user && ids.includes( s.promo_id ) && s.clicked_at >= now - CREDIT_DAYS * DAY && s.clicked_at <= now )
+    .sort( ( a, b ) => b.clicked_at - a.clicked_at )[ 0 ];
+  if ( ! click ) {
+    return 'not credited: no click on an offer selling it in the last 7 days';
+  }
+  // One purchase per click: buying and then being added to the space are the same sale.
+  if ( db.sales.some( ( s ) => s.user_id === user && s.promo_id === click.promo_id && s.clicked_at === click.clicked_at ) ) {
+    return 'not credited: that click already earned a purchase';
+  }
+  // INSERT IGNORE: the primary key is `purchase`, so the same purchase never counts twice.
+  if ( db.sales.some( ( s ) => s.purchase === purchase ) ) {
+    return 'not credited: that purchase was already counted';
+  }
+  db.sales.push( { purchase, promo_id: click.promo_id, user_id: user, clicked_at: click.clicked_at } );
+  return `credited to promotion ${ click.promo_id }`;
+};
+// The two hooks Tracking listens to.
+const on_bought = ( provider, user, productId, purchase ) => credit( user, `${ provider }:${ productId }`, `bought:${ provider }:${ purchase }` );
+const on_joined = ( spaceId, user ) => credit( user, 'profilepress:12', `joined:${ spaceId }:${ user }` );
+
+// Added so this runs on its own: reads a link the way PHP's $_GET would.
+const open = ( link, user, version ) => {
+  const url = new URL( link );
+  if ( version === 'before' ) {
+    const id = Number( url.pathname.match( /promotions\/(\d+)\/go/ )?.[ 1 ] );
+    const nonce = url.searchParams.get( '_wpnonce' ) ?? '';
+    if ( ! wp_verify_nonce( nonce, 'wp_rest', user ) ) {
+      return `403 Cookie check failed (the nonce in the link is someone else's)`;
+    }
+    return follow( id, user, url.searchParams.get( 'place' ) ?? '', '', { first: true } );
+  }
+  return follow( Number( url.searchParams.get( 'forumwp_offer' ) ), user, url.searchParams.get( 'place' ) ?? '', url.searchParams.get( 'offer_nonce' ) ?? '' );
+};
+// What a redirect that trusted the link would do (no version of ForumWP Pro did this).
+const naive = ( link ) => new URL( link ).searchParams.get( 'to' );
+
+const Demo = () => {
+  const [ version, setVersion ] = useState( 'after' );
+  const [ log, setLog ] = useState( [] );
+  const [ tried, setTried ] = useState( '' );
+  const say = ( line ) => {
+    console.log( line );
+    setLog( ( l ) => [ ...l, line ] );
+  };
+  // Offer.js's <Go> adds the place to the server's link.
+  const link = ( id = 1, user = 'tunde' ) => `${ version === 'before' ? goUrlBefore( id, user ) : goUrl( id, user ) }&place=feed`;
+  const tundeLink = link();
+  const leaked = new URL( tundeLink ).searchParams.get( version === 'before' ? '_wpnonce' : 'offer_nonce' );
+
+  return (
+    <div style={ { maxWidth: 720 } }>
+      <RadioControl
+        label="The button's link"
+        selected={ version }
+        options={ [ { label: 'REST route with the wp_rest nonce (the first version)', value: 'before' }, { label: 'The site’s address with the promotion’s own nonce (ForumWP Pro)', value: 'after' } ] }
+        onChange={ ( v ) => { setVersion( v ); setLog( [] ); } }
+      />
+      <p>Tunde's button links to <code className="fwp-wrap">{ tundeLink }</code></p>
+      <p>
+        <Button variant="primary" onClick={ () => say( `Tunde clicks the button → ${ open( tundeLink, 'tunde', version ) }` ) }>Tunde clicks the button</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => say( `Tunde pastes the link in a public post. cheap-prizes.example reads the nonce (${ leaked }) and makes Tunde's browser send POST /forumwp/v1/posts with it → ${ restPost( 'tunde', leaked, 'Buy cheap prizes here' ) }` ) }>A site uses the shared link's nonce</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => { const before = db.stats.length; const to = open( tundeLink, 'kemi', version ); say( `Kemi opens the link Tunde shared → ${ to }; ${ db.stats.length > before ? 'a click is counted' : 'no click counted' }` ); } }>Kemi opens Tunde's link</Button>
+      </p>
+      <p>
+        <Button variant="secondary" onClick={ () => [ 1, 2, 3 ].forEach( ( id ) => say( `Tunde tries id ${ id } → ${ open( link( id ), 'tunde', version ) }` ) ) }>Tunde tries ids 1, 2 and 3</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => say( `Mei, a community admin, tries her scheduled promotion 2 → ${ open( link( 2, 'mei' ), 'mei', version ) }` ) }>Mei tries promotion 2</Button>
+      </p>
+      <TextControl
+        label="Edit the link and open it as Tunde (try adding &to=https://evil.example)"
+        value={ tried || tundeLink }
+        onChange={ setTried }
+        __nextHasNoMarginBottom
+      />
+      <p>
+        <Button variant="secondary" onClick={ () => { try { const l = tried || tundeLink; say( `Tunde opens the edited link → ${ open( l, 'tunde', version ) }${ naive( l ) ? ` (a redirect that read ?to= would have sent him to ${ naive( l ) })` : '' }` ); } catch { say( 'That isn’t a link' ); } } }>Open the edited link</Button>
+      </p>
+      <p>
+        <Button variant="secondary" onClick={ () => say( `Tunde buys the Founders plan (forumwp_pro_bought) → ${ on_bought( 'profilepress', 'tunde', 12, 'order-881' ) }` ) }>Tunde buys</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => say( `Pro adds Tunde to Founders circle (forumwp_pro_paywall_joined) → ${ on_joined( 4, 'tunde' ) }` ) }>Pro adds him to the space</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => { now += 8 * DAY; say( '…8 days pass' ); } }>+8 days</Button>
+      </p>
+      <ol>{ log.map( ( line, i ) => <li key={ i }>{ line }</li> ) }</ol>
+      <p className="fwp-muted">promo_stats clicks: { db.stats.length } · promo_sales: { db.sales.length }</p>
+    </div>
+  );
+};
+
+document.head.insertAdjacentHTML( 'beforeend', `<style>
+  .fwp-wrap { word-break: break-all; }
+  .fwp-muted { color: #757575; }
+</style>` ); // Added so this runs on its own
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <Demo /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>

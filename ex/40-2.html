@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>40.2: One request for a whole screen: GET /home built from sections that add-ons can add to</title>
+<!-- ForumWP React course, 40.2: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 40.2
+// @title One request for a whole screen: GET /home built from sections that add-ons can add to
+// @section 40.2
+// @click Load My home
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, CheckboxControl } from '@wordpress/components'; // Added so this runs on its own
+import { createHooks } from '@wordpress/hooks'; // Added so this runs on its own
+
+// Added so this runs on its own: two sets of hooks. `php` stands in for WordPress's
+// apply_filters() on the server; `js` is wp.hooks in the browser.
+const php = createHooks();
+const js = createHooks();
+let requests = 0;
+
+// ForumWP, src/Home/Home.php: definitions(), shortened to three of ForumWP's sections and
+// Pro's "Continue learning", which ForumWP lists (so the admin can place it) without data.
+const definitions = () => {
+  const core = {
+    greeting: { label: 'Greeting', column: 'top', data: ( user ) => ( { firstName: user.name } ) },
+    whats_new: {
+      label: 'What’s new in your spaces',
+      column: 'main',
+      options: { per_space: { type: 'int', default: 3, min: 1, max: 10 } },
+      data: ( user, options ) => ( { total: 4, perSpace: options.per_space } ),
+    },
+    learning: { label: 'Continue learning', column: 'main', pro: true },
+    spaces: { label: 'Spaces you might like', column: 'side', data: () => null }, // nothing to suggest: left out
+  };
+  const sections = php.applyFilters( 'forumwp_home_sections', core );
+  const out = {};
+  for ( const [ id, s ] of Object.entries( sections ) ) {
+    if ( ! s?.label ) {
+      continue;
+    }
+    out[ id ] = { ...s, options: s.options ?? {}, data: typeof s.data === 'function' ? s.data : null };
+  }
+  return out;
+};
+
+// Home::clean_layout(): the admin's saved order, each option clamped. A section nothing
+// registers right now keeps its place and options.
+const cleanLayout = ( saved, defs ) =>
+  saved.map( ( s ) => {
+    const options = {};
+    for ( const [ key, o ] of Object.entries( defs[ s.id ]?.options ?? {} ) ) {
+      options[ key ] = Math.max( o.min, Math.min( o.max, Number( s.options?.[ key ] ?? o.default ) ) );
+    }
+    return { id: s.id, on: s.on ?? true, options: defs[ s.id ] ? options : s.options ?? {} };
+  } );
+
+// Home::build(): the sections with something to show, in the admin's order.
+const build = ( user, saved ) => {
+  requests++;
+  const defs = definitions();
+  const sections = [];
+  for ( const section of cleanLayout( saved, defs ) ) {
+    const def = defs[ section.id ];
+    if ( ! section.on || ! def || ! def.data ) {
+      continue;
+    }
+    let data;
+    try {
+      data = def.data( user, section.options );
+    } catch ( e ) {
+      console.log( `${ section.id }: ${ e.message } (left out, the page still loads)` );
+      data = null; // An add-on's error leaves its section out rather than breaking the page.
+    }
+    if ( data === null ) {
+      continue;
+    }
+    sections.push( { id: section.id, column: def.column, options: section.options, data } );
+  }
+  return { sections };
+};
+
+// Added so this runs on its own: ForumWP Pro, as two plugins' worth of filters.
+const proOn = () => {
+  // ForumWP Pro, src/Home/Sections.php: gives the 'learning' section its data.
+  php.addFilter( 'forumwp_home_sections', 'pro', ( sections ) => {
+    if ( sections.learning ) {
+      sections.learning.data = ( user ) => {
+        if ( window.proBroken ) {
+          throw new Error( 'Call to undefined method Course::next()' );
+        }
+        return { items: [ { title: 'Pricing your first course', next: 'Lesson 3: Anchors' } ] };
+      };
+    }
+    return sections;
+  } );
+  // ForumWP Pro, app/portal/promotions/index.js: draws it.
+  js.addFilter( 'forumwp.homeSections', 'pro', ( list ) => [ ...list, { id: 'learning', component: Learning } ] );
+};
+const proOff = () => {
+  php.removeFilter( 'forumwp_home_sections', 'pro' );
+  js.removeFilter( 'forumwp.homeSections', 'pro' );
+};
+
+// The app's side. ForumWP, app/portal/extend.js
+const homeSections = () =>
+  ( js.applyFilters( 'forumwp.homeSections', [] ) ?? [] ).filter( ( s ) => s?.id && typeof s.component === 'function' );
+
+const HomeSection = ( { title, children } ) => (
+  <section className="fwp-card"><h3>{ title }</h3>{ children }</section>
+);
+const Greeting = ( { data } ) => <h2>Good morning, { data.firstName }</h2>;
+const WhatsNew = ( { data } ) => (
+  <HomeSection title="What’s new in your spaces">{ data.total } new posts ({ data.perSpace } per space)</HomeSection>
+);
+const Learning = ( { data } ) => (
+  <HomeSection title="Continue learning">{ data.items.map( ( c ) => <p key={ c.title }>{ c.title }: { c.next }</p> ) }</HomeSection>
+);
+
+// ForumWP, app/portal/screens/MyHome.js, shortened
+const CORE = { greeting: Greeting, whats_new: WhatsNew };
+const MyHome = ( { data } ) => {
+  const drawers = { ...CORE };
+  homeSections().forEach( ( s ) => ( drawers[ s.id ] = s.component ) );
+  const sections = data.sections.filter( ( s ) => drawers[ s.id ] );
+  return sections.map( ( section ) => {
+    const Section = drawers[ section.id ];
+    return <Section key={ section.id } data={ section.data } options={ section.options } />;
+  } );
+};
+
+// The admin's saved order (Settings → General → My home). per_space 40 is out of range.
+const SAVED = [
+  { id: 'greeting' },
+  { id: 'learning' },
+  { id: 'whats_new', options: { per_space: 40 } },
+  { id: 'spaces' },
+];
+
+const Demo = () => {
+  const [ pro, setPro ] = useState( true );
+  const [ broken, setBroken ] = useState( false );
+  const [ answer, setAnswer ] = useState( null );
+  const load = () => {
+    proOff();
+    if ( pro ) {
+      proOn();
+    }
+    window.proBroken = broken;
+    const data = build( { name: 'Ada' }, SAVED );
+    console.log( `GET /home (request ${ requests }): ${ data.sections.map( ( s ) => s.id ).join( ', ' ) }` );
+    setAnswer( data );
+  };
+
+  return (
+    <div style={ { maxWidth: 640 } }>
+      <CheckboxControl label="ForumWP Pro is active" checked={ pro } onChange={ setPro } __nextHasNoMarginBottom />
+      <CheckboxControl label="Pro's section throws an error" checked={ broken } onChange={ setBroken } __nextHasNoMarginBottom />
+      <p><Button variant="primary" onClick={ load }>Load My home</Button></p>
+      { answer && (
+        <>
+          <p className="fwp-muted">
+            Saved layout after <code>clean_layout()</code>: <code>{ JSON.stringify( cleanLayout( SAVED, definitions() ) ) }</code>
+          </p>
+          <pre className="fwp-json">{ JSON.stringify( answer, null, 1 ) }</pre>
+          <MyHome data={ answer } />
+        </>
+      ) }
+    </div>
+  );
+};
+
+document.head.insertAdjacentHTML( 'beforeend', `<style>
+  .fwp-muted { color: #757575; font-size: 13px; }
+  .fwp-json { background: #f6f7f7; padding: 8px; font-size: 12px; max-height: 220px; overflow: auto; }
+</style>` ); // Added so this runs on its own
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <Demo /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>

@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>40.1: Which screen is first: &quot;/&quot;, &quot;/feed&quot; and &quot;/home&quot; behind a setting, with deep links kept</title>
+<!-- ForumWP React course, 40.1: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 40.1
+// @title Which screen is first: "/", "/feed" and "/home" behind a setting, with deep links kept
+// @section 40.1
+// @click Open /feed\?tag=events
+import { createContext, createRoot, useContext, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, CheckboxControl, RadioControl } from '@wordpress/components'; // Added so this runs on its own
+import { MemoryRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'; // MemoryRouter: added so this runs on its own
+
+// Added so this runs on its own: ForumWP's portal context (Chapter 20), holding what PHP printed:
+// forumwpData.home = { enabled, home, feed } and the current user.
+const PortalContext = createContext( {} );
+const usePortal = () => useContext( PortalContext );
+
+// Added so this runs on its own: the two screens, shortened. The feed opens its post box when
+// asked to with the router state { compose: true } (window.forumwp.utils.startPost).
+const Home = () => {
+  const location = useLocation();
+  return (
+    <div className="fwp-card">
+      <strong>The feed</strong>
+      { location.state?.compose && <p className="is-good">The post box is open, with the draft filled in.</p> }
+      { new URLSearchParams( location.search ).get( 'tag' ) && (
+        <p>Showing posts tagged <code>{ new URLSearchParams( location.search ).get( 'tag' ) }</code></p>
+      ) }
+    </div>
+  );
+};
+
+// ForumWP, app/portal/screens/MyHome.js (the part that passes a post on to the feed)
+const MyHome = () => {
+  const { home } = usePortal();
+  const location = useLocation();
+  // Asked to start a post (window.forumwp.utils.startPost): that happens in the feed.
+  if ( location.state?.compose ) {
+    return <Navigate to={ home.feed } state={ location.state } replace />;
+  }
+  return <div className="fwp-card"><strong>My home</strong>: greeting, what's new, events…</div>;
+};
+
+let keepAddress = true; // Added so this runs on its own: the checkbox below
+
+// ForumWP, app/portal/App.js
+const HomeOrFeed = ( { at } ) => {
+  const { home, currentUser } = usePortal();
+  const location = useLocation();
+  const on = !! home?.enabled;
+  const member = currentUser?.status === 'active';
+  const to = ( path ) =>
+    keepAddress ? (
+      <Navigate to={ path + location.search } state={ location.state } replace />
+    ) : (
+      <Navigate to={ path } replace />
+    );
+
+  if ( at === '/' ) {
+    return on && member ? <MyHome /> : <Home />;
+  }
+  if ( at === '/feed' ) {
+    return on ? <Home /> : to( '/' );
+  }
+
+  return ! on && member ? <MyHome /> : to( '/' );
+};
+
+// Added so this runs on its own: where the router is now, and buttons standing in for links.
+const Where = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const go = ( path, state ) => {
+    console.log( `go to ${ path }${ state ? ' with state ' + JSON.stringify( state ) : '' }` );
+    navigate( path, { state } );
+  };
+  return (
+    <>
+      <p>
+        <Button variant="secondary" onClick={ () => go( '/' ) }>Open /</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => go( '/feed' ) }>Open /feed</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => go( '/home' ) }>Open /home</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => go( '/feed?tag=events' ) }>Open /feed?tag=events</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => go( '/', { compose: true } ) }>startPost(): / with state</Button>
+      </p>
+      <p>
+        The address is now <code>{ location.pathname + location.search }</code>
+        { location.state && <> with state <code>{ JSON.stringify( location.state ) }</code></> }
+      </p>
+    </>
+  );
+};
+
+const Demo = () => {
+  const [ enabled, setEnabled ] = useState( true );
+  const [ status, setStatus ] = useState( 'active' );
+  const [ keep, setKeep ] = useState( true );
+  keepAddress = keep;
+  // Home::paths(), as PHP prints it into forumwpData.home
+  const home = enabled ? { enabled, home: '/', feed: '/feed' } : { enabled, home: '/home', feed: '/' };
+  const portal = { home, currentUser: status === 'visitor' ? null : { status } };
+
+  return (
+    <div style={ { maxWidth: 680 } }>
+      <CheckboxControl label="Settings → General → My home: open the community on My home" checked={ enabled } onChange={ setEnabled } __nextHasNoMarginBottom />
+      <CheckboxControl label="Keep the query string and router state when moving (ForumWP)" checked={ keep } onChange={ setKeep } __nextHasNoMarginBottom />
+      <RadioControl
+        label="Who is looking"
+        selected={ status }
+        options={ [ { label: 'Ada, an active member', value: 'active' }, { label: 'Kemi, waiting for approval', value: 'pending' }, { label: 'A visitor', value: 'visitor' } ] }
+        onChange={ setStatus }
+      />
+      <p className="fwp-muted">forumwpData.home = <code>{ JSON.stringify( home ) }</code></p>
+      <PortalContext.Provider value={ portal }>
+        <MemoryRouter initialEntries={ [ '/' ] }>
+          <Where />
+          <Routes>
+            <Route path="/" element={ <HomeOrFeed at="/" /> } />
+            <Route path="/feed" element={ <HomeOrFeed at="/feed" /> } />
+            <Route path="/home" element={ <HomeOrFeed at="/home" /> } />
+          </Routes>
+        </MemoryRouter>
+      </PortalContext.Provider>
+    </div>
+  );
+};
+
+document.head.insertAdjacentHTML( 'beforeend', `<style>
+  .fwp-muted { color: #757575; }
+  .is-good { color: #1a7a33; }
+</style>` ); // Added so this runs on its own
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <Demo /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>
