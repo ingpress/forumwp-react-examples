@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>44.4: A lazy-loaded screen with React.lazy() and import(), and its chunk translations loaded before the app starts</title>
+<!-- ForumWP React course, 44.4: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 44.4
+// @title A lazy-loaded screen with React.lazy() and import(), and its chunk translations loaded before the app starts
+// @section 44.9
+// @click Open Messages
+import { createRoot, lazy, Suspense, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, CheckboxControl, Spinner } from '@wordpress/components'; // Added so this runs on its own
+import { createI18n } from '@wordpress/i18n'; // Added so this runs on its own
+
+// Added so this runs on its own: the page's translations. The real app uses the global
+// wp.i18n; a fresh createI18n() per "page load" here lets you start again with other settings.
+const FR_MAIN = { 'Feed': [ 'Fil' ], 'Messages': [ 'Messages' ] }; // languages/forumwp-fr_FR-<md5 of build/portal.js>.json
+const FR_CHUNK = { 'New message': [ 'Nouveau message' ], 'Nothing here yet.': [ 'Rien pour l’instant.' ] }; // …-<md5 of build/portal-messages.js>.json
+const header = { '': { domain: 'forumwp', lang: 'fr', plural_forms: 'nplurals=2; plural=(n > 1);' } };
+
+// What the server prints before portal.js: wp_set_script_translations() for the main file,
+// and Assets::chunk_translations() for each build/portal-*.js.
+const pageLoad = ( french, chunkTranslations, log ) => {
+  const i18n = createI18n();
+  if ( french ) {
+    i18n.setLocaleData( { ...header, ...FR_MAIN }, 'forumwp' );
+    log( 'printed before portal.js: setLocaleData() for portal.js' );
+    if ( chunkTranslations ) {
+      i18n.setLocaleData( { ...header, ...FR_CHUNK }, 'forumwp' );
+      log( 'printed before portal.js: setLocaleData() for portal-messages.js (chunk_translations())' );
+    }
+  }
+  log( 'downloaded: build/portal.js' );
+  // The chunk: a pretend import() that "downloads" build/portal-messages.js.
+  const importMessages = () => {
+    log( 'downloading: build/portal-messages.js …' );
+    return new Promise( ( resolve ) => setTimeout( () => {
+      log( 'downloaded: build/portal-messages.js' );
+      const MessagesScreen = () => (
+        <div className="fwp-card">
+          <h3>{ i18n.__( 'Messages', 'forumwp' ) }</h3>
+          <Button variant="primary">{ i18n.__( 'New message', 'forumwp' ) }</Button>
+          <p>{ i18n.__( 'Nothing here yet.', 'forumwp' ) }</p>
+        </div>
+      );
+      resolve( { default: MessagesScreen } );
+    }, 900 ) );
+  };
+  // lazyComponent(): made once per page load, never inside a render.
+  const Lazy = lazy( importMessages );
+  const Messages = () => <Suspense fallback={ <Spinner /> }><Lazy /></Suspense>;
+  return { i18n, Messages };
+};
+
+// Added so this runs on its own: where the pretend page writes its log.
+const logged = [];
+let logTo = ( l ) => logged.push( l );
+const log = ( l ) => logTo( l );
+
+const Demo = () => {
+  const [ french, setFrench ] = useState( true );
+  const [ chunks, setChunks ] = useState( true );
+  const [ lines, setLines ] = useState( logged );
+  const [ page, setPage ] = useState( () => pageLoad( true, true, log ) );
+  const [ screen, setScreen ] = useState( 'feed' );
+  logTo = ( l ) => {
+    console.log( l );
+    setLines( ( x ) => [ ...x, l ] );
+  };
+  const load = () => {
+    setLines( [] );
+    setScreen( 'feed' );
+    setPage( pageLoad( french, chunks, log ) );
+  };
+  const { i18n, Messages } = page;
+  return (
+    <div style={ { maxWidth: 760 } }>
+      <CheckboxControl __nextHasNoMarginBottom label="The site is in French" checked={ french } onChange={ setFrench } />
+      <CheckboxControl __nextHasNoMarginBottom label="Assets::chunk_translations() ran" checked={ chunks } onChange={ setChunks } />
+      <p><Button variant="secondary" onClick={ load }>Load the page again with these settings</Button></p>
+      <p>
+        <Button variant={ screen === 'feed' ? 'primary' : 'tertiary' } onClick={ () => setScreen( 'feed' ) }>{ i18n.__( 'Feed', 'forumwp' ) }</Button>{ ' ' }
+        <Button variant={ screen === 'messages' ? 'primary' : 'tertiary' } onClick={ () => setScreen( 'messages' ) }>Open Messages</Button>
+      </p>
+      { screen === 'messages' ? <Messages /> : <div className="fwp-card">{ i18n.__( 'Feed', 'forumwp' ) }: …</div> }
+      <ol className="fwp-log">{ lines.map( ( l, i ) => <li key={ i }>{ l }</li> ) }</ol>
+    </div>
+  );
+};
+
+document.head.insertAdjacentHTML( 'beforeend', `<style>
+  .fwp-log li { font-size: 13px; }
+</style>` ); // Added so this runs on its own
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <Demo /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>

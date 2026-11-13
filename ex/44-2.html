@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>44.2: Batching: block relations once both ways, and the conversation list with members_of() and the last messages in one query</title>
+<!-- ForumWP React course, 44.2: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 44.2
+// @title Batching: block relations once both ways, and the conversation list with members_of() and the last messages in one query
+// @section 44.4
+// @click Build both ways
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, RangeControl } from '@wordpress/components'; // Added so this runs on its own
+
+// Added so this runs on its own: pretend tables and a counting $wpdb. Tunde is user 7.
+// He blocked 12; 15 blocked him.
+const blocks = [ { user_id: 7, blocked_id: 12 }, { user_id: 15, blocked_id: 7 }, { user_id: 30, blocked_id: 31 } ];
+let queries = 0;
+const q = ( result ) => {
+  queries++;
+  return result;
+};
+
+// 0.34.2: between() reads each side's list of people they blocked.
+const oldBlocking = () => {
+  const cache = {};
+  const blockedBy = ( u ) => ( cache[ u ] ??= q( blocks.filter( ( b ) => b.user_id === u ).map( ( b ) => b.blocked_id ) ) );
+  return { between: ( a, b ) => blockedBy( a ).includes( b ) || blockedBy( b ).includes( a ) };
+};
+// 0.34.3: relations() loads everyone a member has a block with, either way, as a set.
+const newBlocking = () => {
+  const relations = {};
+  const load = ( u ) => {
+    if ( ! relations[ u ] ) {
+      relations[ u ] = new Set( q( blocks.filter( ( b ) => b.user_id === u || b.blocked_id === u ) ).map( ( b ) => ( b.user_id === u ? b.blocked_id : b.user_id ) ) );
+    }
+    return relations[ u ];
+  };
+  return {
+    between( a, b ) {
+      const known = relations[ b ] && ! relations[ a ] ? b : a;
+      return load( known ).has( known === a ? b : a );
+    },
+  };
+};
+
+const conversationsOf = ( n ) => Array.from( { length: n }, ( _, i ) => ( { id: i + 1, last_message_id: 500 + i, members: [ 7, 20 + i ] } ) );
+// 0.34.2: present() loads each conversation's members and last message itself.
+const oldInbox = ( list ) => list.map( ( c ) => ( { members: q( c.members ), last: q( { id: c.last_message_id } ) } ) );
+// 0.34.3: present_many(): members_of() and the last messages for the whole list.
+const newInbox = ( list ) => {
+  const members = q( Object.fromEntries( list.map( ( c ) => [ c.id, c.members ] ) ) ); // WHERE conversation_id IN (…)
+  q( 'Members::prime()' ); // every person's profile at once
+  const last = list.length ? q( Object.fromEntries( list.map( ( c ) => [ c.last_message_id, { id: c.last_message_id } ] ) ) ) : {}; // WHERE id IN (…)
+  return list.map( ( c ) => ( { members: members[ c.id ], last: last[ c.last_message_id ] } ) );
+};
+
+const Demo = () => {
+  const [ n, setN ] = useState( 20 );
+  const [ out, setOut ] = useState( [] );
+  const run = () => {
+    const authors = Array.from( { length: 20 }, ( _, i ) => 10 + i ); // 20 different authors, 12 and 15 among them
+    const lines = [];
+    for ( const [ name, make ] of [ [ '0.34.2 between()', oldBlocking ], [ '0.34.3 relations()', newBlocking ] ] ) {
+      queries = 0;
+      const B = make();
+      const hidden = authors.filter( ( a ) => B.between( 7, a ) );
+      lines.push( `Feed of 20 authors, ${ name }: ${ queries } quer${ queries === 1 ? "y" : "ies" } on the blocks table; hidden: ${ hidden.join( ', ' ) }` );
+    }
+    for ( const [ name, build ] of [ [ '0.34.2 present() each', oldInbox ], [ '0.34.3 present_many()', newInbox ] ] ) {
+      queries = 0;
+      build( conversationsOf( n ) );
+      lines.push( `Inbox of ${ n } conversations, ${ name }: ${ queries } queries` );
+    }
+    lines.forEach( ( l ) => console.log( l ) );
+    setOut( lines );
+  };
+  return (
+    <div style={ { maxWidth: 760 } }>
+      <RangeControl __nextHasNoMarginBottom label="Conversations in Tunde's inbox" min={ 1 } max={ 30 } value={ n } onChange={ setN } />
+      <p><Button variant="primary" onClick={ run }>Build both ways</Button></p>
+      <ul>{ out.map( ( l, i ) => <li key={ i }>{ l }</li> ) }</ul>
+    </div>
+  );
+};
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <Demo /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>

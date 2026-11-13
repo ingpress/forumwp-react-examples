@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>43.3: Four copy slots: GET_LOCK with a timeout of 0, &quot;busy&quot; at once, and the short network lock</title>
+<!-- ForumWP React course, 43.3: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 43.3
+// @title Four copy slots: GET_LOCK with a timeout of 0, "busy" at once, and the short network lock
+// @section 43.6
+// @click Visitors press Start
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, RadioControl, RangeControl } from '@wordpress/components'; // Added so this runs on its own
+
+// Added so this runs on its own: MySQL's named locks, on a pretend clock in milliseconds.
+// Each lock remembers when it is free again; GET_LOCK( name, wait ) answers when it gets it,
+// or 0 once wait has run out.
+const COPY_MS = 1000; // copying 77 tables
+const LOCKED_MS = 4; // the limits check and the site row
+const WORKERS = 10; // PHP workers on the web server
+const makeLocks = () => {
+  const freeAt = {};
+  return {
+    // Returns [ got, at ]: got is 1 or 0, at is the time GET_LOCK returned.
+    get( name, now, waitMs ) {
+      const free = freeAt[ name ] ?? 0;
+      if ( free <= now ) {
+        return [ 1, now ];
+      }
+      return free - now <= waitMs ? [ 1, free ] : [ 0, now + waitMs ];
+    },
+    hold( name, until ) {
+      freeAt[ name ] = until;
+    },
+  };
+};
+
+const simulate = ( n, mode ) => {
+  const locks = makeLocks();
+  let running = 150; // sandboxes alive, counted under the network lock
+  const rows = [];
+  for ( let i = 0; i < n; i++ ) {
+    const arrive = i * 3;
+    if ( mode === 'one' ) {
+      // The first version: one lock around everything, waiting up to 20 s.
+      const [ got, at ] = locks.get( 'copy', arrive, 20000 );
+      if ( ! got ) {
+        rows.push( { i, outcome: 'busy (after waiting)', done: at } );
+        continue;
+      }
+      locks.hold( 'copy', at + LOCKED_MS + COPY_MS );
+      running++;
+      rows.push( { i, outcome: `copied (${ running } running)`, done: at + LOCKED_MS + COPY_MS } );
+      continue;
+    }
+    // ForumWP Demo: Cloner::with_slot(), GET_LOCK( slotN, 0 ) for each slot in turn.
+    let slot = -1;
+    for ( let s = 0; s < 4; s++ ) {
+      if ( locks.get( `slot${ s }`, arrive, 0 )[ 0 ] ) {
+        slot = s;
+        break;
+      }
+    }
+    if ( slot < 0 ) {
+      rows.push( { i, outcome: 'busy at once', done: arrive + 50 } );
+      continue;
+    }
+    // Cloner::locked(): the network lock, 3 s at most, for the short part only.
+    const [ got, at ] = locks.get( 'network', arrive, 3000 );
+    if ( ! got ) {
+      rows.push( { i, outcome: 'busy (network lock)', done: at } );
+      continue;
+    }
+    locks.hold( 'network', at + LOCKED_MS );
+    running++;
+    const done = at + LOCKED_MS + COPY_MS;
+    locks.hold( `slot${ slot }`, done );
+    rows.push( { i, outcome: `copied in slot ${ slot } (${ running } running)`, done } );
+  }
+  return rows;
+};
+
+const Demo = () => {
+  const [ n, setN ] = useState( 6 );
+  const [ mode, setMode ] = useState( 'slots' );
+  const [ rows, setRows ] = useState( [] );
+  const busyWorkers = ( t ) => rows.filter( ( r ) => r.i * 3 <= t && r.done > t ).length;
+  return (
+    <div style={ { maxWidth: 760 } }>
+      <RadioControl
+        label="How copies are made"
+        selected={ mode }
+        options={ [ { label: 'ForumWP Demo: 4 slots taken with GET_LOCK( slot, 0 ), a 4 ms network lock inside', value: 'slots' }, { label: 'The first version: one lock around the whole copy, waiting up to 20 s', value: 'one' } ] }
+        onChange={ setMode }
+      />
+      <RangeControl __nextHasNoMarginBottom label="Visitors pressing Start within a few milliseconds" min={ 1 } max={ 30 } value={ n } onChange={ setN } />
+      <p><Button variant="primary" onClick={ () => { const r = simulate( n, mode ); r.forEach( ( x ) => console.log( `Visitor ${ x.i + 1 }: ${ x.outcome }, answered at ${ ( x.done / 1000 ).toFixed( 2 ) } s` ) ); setRows( r ); } }>Visitors press Start</Button></p>
+      { rows.length > 0 && (
+        <>
+          <table className="fwp-table">
+            <thead><tr><th>Visitor</th><th>Outcome</th><th>Answered after</th></tr></thead>
+            <tbody>{ rows.map( ( r ) => <tr key={ r.i }><td>{ r.i + 1 }</td><td>{ r.outcome }</td><td>{ ( r.done / 1000 ).toFixed( 2 ) } s</td></tr> ) }</tbody>
+          </table>
+          <p>PHP workers held at 0.5 s: { busyWorkers( 500 ) } of { WORKERS }{ busyWorkers( 500 ) >= WORKERS ? ': every worker is taken, so nobody else can even load a page' : '' }. At 5 s: { busyWorkers( 5000 ) }.</p>
+        </>
+      ) }
+    </div>
+  );
+};
+
+document.head.insertAdjacentHTML( 'beforeend', `<style>
+  .fwp-table { border-collapse: collapse; font-size: 13px; }
+  .fwp-table td, .fwp-table th { border: 1px solid #ddd; padding: 4px 8px; text-align: left; }
+</style>` ); // Added so this runs on its own
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <Demo /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>

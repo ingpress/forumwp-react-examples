@@ -79,7 +79,7 @@ footer { color: var(--muted); font-size: 13px; margin-top: 40px; }
   <header class="top">
     <span class="eyebrow">React + WordPress REST API, from Zero</span>
     <h1>ForumWP React Examples</h1>
-    <p class="lede">295 examples from the course, each a single HTML page that runs as it is. Press <b>Run</b>, or open one in a sandbox to change the code and see what happens.</p>
+    <p class="lede">308 examples from the course, each a single HTML page that runs as it is. Press <b>Run</b>, or open one in a sandbox to change the code and see what happens.</p>
     <ul class="how">
       <li><b>Run it anywhere</b>Each page loads React and WordPress's own components from a CDN and compiles the JSX in your browser. No install, no build.</li>
       <li><b>Look at the console</b>Console output also appears under the example. React's development warnings are on, so you see the same messages the book quotes.</li>
@@ -129,6 +129,10 @@ footer { color: var(--muted); font-size: 13px; margin-top: 40px; }
 <a href="#ch-39"><span>39</span>Duplicate, streaks, kudos and member sources</a>
 <a href="#ch-40"><span>40</span>My home and promotions</a>
 <a href="#ch-41"><span>41</span>Letting AI tools in: the Abilities API</a>
+<a href="#ch-42"><span>42</span>Drafts for everyone: conditional writes and 409 Conflict</a>
+<a href="#ch-43"><span>43</span>Building a live demo sandbox</a>
+<a href="#ch-44"><span>44</span>Performance at scale</a>
+<a href="#ch-45"><span>45</span>Accessibility and translation polish</a>
     </nav>
     <main>
       <div class="search"><label class="eyebrow" for="filter">Find an example</label><input id="filter" type="search" placeholder="Type a number or a word, e.g. 8.3 or useEffect" autocomplete="off"></div>
@@ -3120,6 +3124,140 @@ footer { color: var(--muted); font-size: 13px; margin-top: 40px; }
     <button class="btn" data-open="jsfiddle" data-slug="41-6" data-title="Example 41.6: The review&#x27;s lessons: secret spaces that answer like missing ones, the leave-space leak, and emails for site admins only">JSFiddle</button>
     <button class="btn" data-open="codesandbox" data-slug="41-6" data-title="Example 41.6: The review&#x27;s lessons: secret spaces that answer like missing ones, the leave-space leak, and emails for site admins only">CodeSandbox</button>
     <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch41/41.6-review-lessons.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li></ul></section>
+<section class="chapter" id="ch-42"><h2><span class="chnum">Chapter 42</span>Drafts for everyone: conditional writes and 409 Conflict</h2><ul class="list"><li class="ex" id="ex-42-1">
+  <div class="ex-head"><span class="num">42.1</span><h3>Save as draft: one route, a draft flag, a cap of 100 and 30 an hour</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/42-1.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="42-1" data-title="Example 42.1: Save as draft: one route, a draft flag, a cap of 100 and 30 an hour">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="42-1" data-title="Example 42.1: Save as draft: one route, a draft flag, a cap of 100 and 30 an hour">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="42-1" data-title="Example 42.1: Save as draft: one route, a draft flag, a cap of 100 and 30 an hour">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch42/42.1-save-as-draft.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li><li class="ex" id="ex-42-2">
+  <div class="ex-head"><span class="num">42.2</span><h3>A conditional write: an edit that saves only while it&#x27;s still a draft, and 409 when it isn&#x27;t</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/42-2.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="42-2" data-title="Example 42.2: A conditional write: an edit that saves only while it&#x27;s still a draft, and 409 when it isn&#x27;t">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="42-2" data-title="Example 42.2: A conditional write: an edit that saves only while it&#x27;s still a draft, and 409 when it isn&#x27;t">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="42-2" data-title="Example 42.2: A conditional write: an edit that saves only while it&#x27;s still a draft, and 409 when it isn&#x27;t">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch42/42.2-conditional-write.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li><li class="ex" id="ex-42-3">
+  <div class="ex-head"><span class="num">42.3</span><h3>Posts::may_announce(): who publishing a draft may email everyone, and when it counts</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/42-3.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="42-3" data-title="Example 42.3: Posts::may_announce(): who publishing a draft may email everyone, and when it counts">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="42-3" data-title="Example 42.3: Posts::may_announce(): who publishing a draft may email everyone, and when it counts">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="42-3" data-title="Example 42.3: Posts::may_announce(): who publishing a draft may email everyone, and when it counts">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch42/42.3-may-announce.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li><li class="ex" id="ex-42-4">
+  <div class="ex-head"><span class="num">42.4</span><h3>The React side: Save as draft, My drafts, publishing with a held notice, and a 409 shown in the composer</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/42-4.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="42-4" data-title="Example 42.4: The React side: Save as draft, My drafts, publishing with a held notice, and a 409 shown in the composer">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="42-4" data-title="Example 42.4: The React side: Save as draft, My drafts, publishing with a held notice, and a 409 shown in the composer">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="42-4" data-title="Example 42.4: The React side: Save as draft, My drafts, publishing with a held notice, and a 409 shown in the composer">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch42/42.4-drafts-in-react.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li></ul></section>
+<section class="chapter" id="ch-43"><h2><span class="chnum">Chapter 43</span>Building a live demo sandbox</h2><ul class="list"><li class="ex" id="ex-43-1">
+  <div class="ex-head"><span class="num">43.1</span><h3>Cloning a template subsite: copy every table, then fix the roles option, addresses (plain and in JSON) and dates</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/43-1.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="43-1" data-title="Example 43.1: Cloning a template subsite: copy every table, then fix the roles option, addresses (plain and in JSON) and dates">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="43-1" data-title="Example 43.1: Cloning a template subsite: copy every table, then fix the roles option, addresses (plain and in JSON) and dates">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="43-1" data-title="Example 43.1: Cloning a template subsite: copy every table, then fix the roles option, addresses (plain and in JSON) and dates">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch43/43.1-clone-a-template.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li><li class="ex" id="ex-43-2">
+  <div class="ex-head"><span class="num">43.2</span><h3>Keeping visitors apart: determine_current_user, user_has_cap and map_meta_cap on a pretend network</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/43-2.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="43-2" data-title="Example 43.2: Keeping visitors apart: determine_current_user, user_has_cap and map_meta_cap on a pretend network">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="43-2" data-title="Example 43.2: Keeping visitors apart: determine_current_user, user_has_cap and map_meta_cap on a pretend network">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="43-2" data-title="Example 43.2: Keeping visitors apart: determine_current_user, user_has_cap and map_meta_cap on a pretend network">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch43/43.2-isolation-and-caps.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li><li class="ex" id="ex-43-3">
+  <div class="ex-head"><span class="num">43.3</span><h3>Four copy slots: GET_LOCK with a timeout of 0, &quot;busy&quot; at once, and the short network lock</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/43-3.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="43-3" data-title="Example 43.3: Four copy slots: GET_LOCK with a timeout of 0, &quot;busy&quot; at once, and the short network lock">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="43-3" data-title="Example 43.3: Four copy slots: GET_LOCK with a timeout of 0, &quot;busy&quot; at once, and the short network lock">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="43-3" data-title="Example 43.3: Four copy slots: GET_LOCK with a timeout of 0, &quot;busy&quot; at once, and the short network lock">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch43/43.3-copy-slots.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li></ul></section>
+<section class="chapter" id="ch-44"><h2><span class="chnum">Chapter 44</span>Performance at scale</h2><ul class="list"><li class="ex" id="ex-44-1">
+  <div class="ex-head"><span class="num">44.1</span><h3>A request cache: Spaces::find() read once per request, null cached too, copies handed out, and forget() after a write</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/44-1.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="44-1" data-title="Example 44.1: A request cache: Spaces::find() read once per request, null cached too, copies handed out, and forget() after a write">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="44-1" data-title="Example 44.1: A request cache: Spaces::find() read once per request, null cached too, copies handed out, and forget() after a write">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="44-1" data-title="Example 44.1: A request cache: Spaces::find() read once per request, null cached too, copies handed out, and forget() after a write">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch44/44.1-request-cache.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li><li class="ex" id="ex-44-2">
+  <div class="ex-head"><span class="num">44.2</span><h3>Batching: block relations once both ways, and the conversation list with members_of() and the last messages in one query</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/44-2.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="44-2" data-title="Example 44.2: Batching: block relations once both ways, and the conversation list with members_of() and the last messages in one query">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="44-2" data-title="Example 44.2: Batching: block relations once both ways, and the conversation list with members_of() and the last messages in one query">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="44-2" data-title="Example 44.2: Batching: block relations once both ways, and the conversation list with members_of() and the last messages in one query">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch44/44.2-batching.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li><li class="ex" id="ex-44-3">
+  <div class="ex-head"><span class="num">44.3</span><h3>Streak reminders at 8 pm in each member&#x27;s own time zone: zones_at() with the browser&#x27;s own time zones, then one query per page</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/44-3.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="44-3" data-title="Example 44.3: Streak reminders at 8 pm in each member&#x27;s own time zone: zones_at() with the browser&#x27;s own time zones, then one query per page">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="44-3" data-title="Example 44.3: Streak reminders at 8 pm in each member&#x27;s own time zone: zones_at() with the browser&#x27;s own time zones, then one query per page">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="44-3" data-title="Example 44.3: Streak reminders at 8 pm in each member&#x27;s own time zone: zones_at() with the browser&#x27;s own time zones, then one query per page">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch44/44.3-streak-zones.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li><li class="ex" id="ex-44-4">
+  <div class="ex-head"><span class="num">44.4</span><h3>A lazy-loaded screen with React.lazy() and import(), and its chunk translations loaded before the app starts</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/44-4.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="44-4" data-title="Example 44.4: A lazy-loaded screen with React.lazy() and import(), and its chunk translations loaded before the app starts">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="44-4" data-title="Example 44.4: A lazy-loaded screen with React.lazy() and import(), and its chunk translations loaded before the app starts">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="44-4" data-title="Example 44.4: A lazy-loaded screen with React.lazy() and import(), and its chunk translations loaded before the app starts">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch44/44.4-lazy-chunk-translations.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li></ul></section>
+<section class="chapter" id="ch-45"><h2><span class="chnum">Chapter 45</span>Accessibility and translation polish</h2><ul class="list"><li class="ex" id="ex-45-1">
+  <div class="ex-head"><span class="num">45.1</span><h3>A skip link with a router, an inert closed drawer, and arrow keys in the account menu</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/45-1.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="45-1" data-title="Example 45.1: A skip link with a router, an inert closed drawer, and arrow keys in the account menu">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="45-1" data-title="Example 45.1: A skip link with a router, an inert closed drawer, and arrow keys in the account menu">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="45-1" data-title="Example 45.1: A skip link with a router, an inert closed drawer, and arrow keys in the account menu">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch45/45.1-skip-link-inert-menu.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li><li class="ex" id="ex-45-2">
+  <div class="ex-head"><span class="num">45.2</span><h3>Plurals with _n(): English, and Polish&#x27;s three forms from a translation file, next to the __() version that can&#x27;t be translated</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/45-2.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="45-2" data-title="Example 45.2: Plurals with _n(): English, and Polish&#x27;s three forms from a translation file, next to the __() version that can&#x27;t be translated">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="45-2" data-title="Example 45.2: Plurals with _n(): English, and Polish&#x27;s three forms from a translation file, next to the __() version that can&#x27;t be translated">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="45-2" data-title="Example 45.2: Plurals with _n(): English, and Polish&#x27;s three forms from a translation file, next to the __() version that can&#x27;t be translated">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch45/45.2-plurals.jsx" target="_blank" rel="noopener">Source</a>
   </div>
 </li></ul></section>
       <footer>Examples for the ForumWP React course by Collins Agbonghama. Code samples use React 18.3 and @wordpress/components 29 from esm.sh. Sandbox links send the example's code to that service.</footer>

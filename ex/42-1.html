@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>42.1: Save as draft: one route, a draft flag, a cap of 100 and 30 an hour</title>
+<!-- ForumWP React course, 42.1: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 42.1
+// @title Save as draft: one route, a draft flag, a cap of 100 and 30 an hour
+// @section 42.1
+// @click Save as draft
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, CheckboxControl, RadioControl } from '@wordpress/components'; // Added so this runs on its own
+import { _n, sprintf } from '@wordpress/i18n'; // Added so this runs on its own
+
+// Added so this runs on its own: a pretend server with ForumWP's posts table and Spam's
+// hourly counters. Kemi already has 97 drafts of her own, and 40 copies "Duplicate space…"
+// made for her (copied_from), which don't count.
+const MAX_DRAFTS = 100; // forumwp_max_drafts
+const PER_HOUR = 30; // forumwp_drafts_per_hour
+const db = { posts: [], hour: {} };
+const seed = () => {
+  db.posts = [
+    ...Array.from( { length: 97 }, ( _, i ) => ( { id: i + 1, user_id: 8, status: 'draft', meta: {} } ) ),
+    ...Array.from( { length: 40 }, ( _, i ) => ( { id: 200 + i, user_id: 8, status: 'draft', meta: { copied_from: 50 + i } } ) ),
+  ];
+  db.hour = {};
+};
+seed();
+const error = ( code, message, status ) => ( { code, message, data: { status } } );
+
+// Posts::count_drafts(): copies made by "Duplicate space…" left out.
+const countDrafts = ( user ) => db.posts.filter( ( p ) => p.user_id === user && p.status === 'draft' && ! p.meta.copied_from ).length;
+// Spam::limited() and Spam::record(): a transient per action and user, for an hour.
+const limited = ( action, user, limit ) => limit > 0 && ( db.hour[ `${ action }:${ user }` ] ?? 0 ) >= limit;
+const record = ( action, user ) => ( db.hour[ `${ action }:${ user }` ] = ( db.hour[ `${ action }:${ user }` ] ?? 0 ) + 1 );
+
+// PostsController::create(), the parts this example is about.
+const create = ( params, { user, isModerator, forum } ) => {
+  const data = { ...params };
+  const draft = !! data.draft;
+  delete data.draft; // never passed on as a field
+  // is_empty() for a draft; missing() (the space's own rules) for a post.
+  if ( draft ) {
+    if ( ! ( data.title ?? '' ).trim() && ! ( data.body ?? '' ).trim() ) {
+      return error( 'forumwp_empty_post', 'Write something before posting.', 400 );
+    }
+  } else if ( forum && ! ( data.title ?? '' ).trim() ) {
+    return error( 'forumwp_topic_title', 'Give the topic a title.', 400 );
+  }
+  if ( draft ) {
+    if ( countDrafts( user ) >= MAX_DRAFTS ) {
+      return error( 'forumwp_too_many_drafts', sprintf( _n( 'You have %d draft. Publish or delete it before saving another.', 'You have %d drafts. Publish or delete some before saving another.', MAX_DRAFTS, 'forumwp' ), MAX_DRAFTS ), 400 );
+    }
+    if ( ! isModerator && limited( 'draft', user, PER_HOUR ) ) {
+      return error( 'forumwp_rate_limited', 'You have saved a lot of drafts in the last hour. Please wait a while before saving another.', 429 );
+    }
+    record( 'draft', user );
+    delete data.publish_at; // a draft goes out when it is published
+  }
+  const post = { id: 1000 + db.posts.length, user_id: user, status: draft ? 'draft' : 'published', meta: {}, ...data };
+  db.posts.push( post );
+  return { id: post.id, status: post.status, title: post.title ?? '', body: post.body ?? '' };
+};
+
+const Demo = () => {
+  const [ who, setWho ] = useState( 'member' );
+  const [ forum, setForum ] = useState( true );
+  const [ log, setLog ] = useState( [] );
+  const [ , redraw ] = useState( 0 );
+  const ctx = { user: 8, isModerator: who === 'moderator', forum };
+  const send = ( label, params ) => {
+    const r = create( params, ctx );
+    const line = `${ label } → ${ r.code ? `${ r.data.status } ${ r.code }: ${ r.message }` : `200 { id: ${ r.id }, status: '${ r.status }' }` }`;
+    console.log( line );
+    setLog( ( l ) => [ line, ...l ].slice( 0, 12 ) );
+  };
+  return (
+    <div style={ { maxWidth: 720 } }>
+      <RadioControl
+        label="Kemi is"
+        selected={ who }
+        options={ [ { label: 'a member', value: 'member' }, { label: 'a community moderator (no hourly limit)', value: 'moderator' } ] }
+        onChange={ setWho }
+      />
+      <CheckboxControl __nextHasNoMarginBottom label="The space is a forum (a new post needs a title)" checked={ forum } onChange={ setForum } />
+      <p>
+        <Button variant="primary" onClick={ () => send( 'Save as draft (no title)', { body: 'Ideas for the spring meetup', draft: true } ) }>Save as draft</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => send( 'Post (no title)', { body: 'Ideas for the spring meetup' } ) }>Post</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => send( 'Save as draft (empty)', { draft: true } ) }>Save an empty draft</Button>
+      </p>
+      <p>
+        <Button variant="secondary" onClick={ () => { for ( let i = 0; i < 31; i++ ) { send( `Draft ${ i + 1 } of 31`, { body: `Note ${ i + 1 }`, draft: true } ); db.posts = db.posts.filter( ( p ) => p.id < 1000 ); } } }>Save 31 drafts, deleting each</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => { const i = db.posts.findIndex( ( p ) => p.user_id === 8 && p.status === 'draft' && ! p.meta.copied_from ); if ( i >= 0 ) { db.posts.splice( i, 1 ); } redraw( ( n ) => n + 1 ); } }>Delete one of her drafts</Button>{ ' ' }
+        <Button variant="tertiary" onClick={ () => { db.hour = {}; redraw( ( n ) => n + 1 ); } }>An hour passes</Button>{ ' ' }
+        <Button variant="tertiary" onClick={ () => { seed(); setLog( [] ); } }>Start again</Button>
+      </p>
+      <p className="fwp-muted">
+        Her drafts (counted): { countDrafts( 8 ) } of { MAX_DRAFTS } · copies from "Duplicate space…" (not counted): { db.posts.filter( ( p ) => p.meta.copied_from ).length } · saved this hour: { db.hour[ 'draft:8' ] ?? 0 } of { PER_HOUR }
+      </p>
+      <ol className="fwp-log">{ log.map( ( line, i ) => <li key={ i }>{ line }</li> ) }</ol>
+    </div>
+  );
+};
+
+document.head.insertAdjacentHTML( 'beforeend', `<style>
+  .fwp-log li { word-break: break-word; margin-bottom: 4px; font-size: 13px; }
+  .fwp-muted { color: #757575; }
+</style>` ); // Added so this runs on its own
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <Demo /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>

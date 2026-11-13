@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>43.1: Cloning a template subsite: copy every table, then fix the roles option, addresses (plain and in JSON) and dates</title>
+<!-- ForumWP React course, 43.1: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 43.1
+// @title Cloning a template subsite: copy every table, then fix the roles option, addresses (plain and in JSON) and dates
+// @section 43.2
+// @click Start a demo
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, CheckboxControl } from '@wordpress/components'; // Added so this runs on its own
+
+// Added so this runs on its own: the template site (wp_2_) as a few tables of rows. It was
+// built 3 days and 2 hours ago. The real template has 77 tables; three are enough here.
+const HOUR = 3600;
+const now = Math.floor( Date.now() / 1000 );
+const built = now - ( 3 * 24 + 2 ) * HOUR - 1200;
+const iso = ( t ) => new Date( t * 1000 ).toISOString().slice( 0, 19 ).replace( 'T', ' ' );
+const fromIso = ( s ) => Date.parse( s.replace( ' ', 'T' ) + 'Z' ) / 1000;
+const template = {
+  options: [
+    { option_name: 'siteurl', option_value: 'https://demo.forumwp.com/template' },
+    { option_name: 'home', option_value: 'https://demo.forumwp.com/template' },
+    { option_name: 'wp_2_user_roles', option_value: '{"administrator":{"capabilities":{"manage_options":true}}}' },
+    { option_name: 'forumwp_demo_built_at', option_value: String( built ) },
+    { option_name: '_transient_forumwp_stats', option_value: '{"members":40}' },
+  ],
+  forumwp_posts: [
+    { id: 1, title: 'Welcome to Maker Collective', created_at: iso( built - 2 * HOUR ), meta: '{}' },
+    { id: 2, title: 'Spring meetup (live)', created_at: iso( built - 26 * HOUR ), meta: '{"event_start":"' + iso( built + 2 * 24 * HOUR ) + '"}' },
+  ],
+  forumwp_library: [
+    { id: 1, title: 'Starter guide.pdf', meta: '{"url":"https:\\/\\/demo.forumwp.com\\/template\\/wp-content\\/uploads\\/sites\\/2\\/guide.pdf"}' },
+  ],
+};
+
+const ago = ( t ) => {
+  const h = Math.round( ( now - t ) / HOUR );
+  const days = ( n ) => `${ n } day${ n === 1 ? '' : 's' }`;
+  return h < 0 ? `in ${ days( Math.round( -h / 24 ) ) }` : h < 24 ? `${ h } hours ago` : `${ days( Math.round( h / 24 ) ) } ago (it's over)`;
+};
+
+const Demo = () => {
+  const [ fix, setFix ] = useState( { roles: true, json: true, dates: true } );
+  const [ out, setOut ] = useState( null );
+  const toggle = ( k ) => ( v ) => setFix( ( f ) => ( { ...f, [ k ]: v } ) );
+
+  const start = () => {
+    const site = 57;
+    const log = [];
+    // Step 2: Db::copy_tables(). The rows move inside the database; PHP sends three statements.
+    const copy = {};
+    for ( const [ name, rows ] of Object.entries( template ) ) {
+      log.push( `DROP TABLE IF EXISTS wp_${ site }_${ name }`, `CREATE TABLE wp_${ site }_${ name } LIKE wp_2_${ name }`, `INSERT INTO wp_${ site }_${ name } SELECT * FROM wp_2_${ name }   (${ rows.length } rows, never read by PHP)` );
+      copy[ name ] = rows.map( ( r ) => ( { ...r } ) );
+    }
+    // Step 3: Cloner::fix_site().
+    if ( fix.roles ) {
+      copy.options.find( ( o ) => o.option_name === 'wp_2_user_roles' ).option_name = `wp_${ site }_user_roles`;
+      log.push( `UPDATE wp_${ site }_options SET option_name = 'wp_${ site }_user_roles' WHERE option_name = 'wp_2_user_roles'` );
+    }
+    copy.options = copy.options.filter( ( o ) => ! o.option_name.startsWith( '_transient_' ) );
+    log.push( `DELETE FROM wp_${ site }_options WHERE option_name LIKE '\\_transient\\_%' …` );
+    const pairs = [ [ '/template/', '/d-k3j9x0qz2a/' ], [ '/sites/2/', `/sites/${ site }/` ] ];
+    if ( fix.json ) {
+      pairs.push( [ '\\/template\\/', '\\/d-k3j9x0qz2a\\/' ], [ '\\/sites\\/2\\/', `\\/sites\\/${ site }\\/` ] );
+    }
+    for ( const rows of Object.values( copy ) ) {
+      for ( const r of rows ) {
+        for ( const k of Object.keys( r ) ) {
+          if ( typeof r[ k ] === 'string' ) {
+            pairs.forEach( ( [ a, b ] ) => ( r[ k ] = r[ k ].split( a ).join( b ) ) );
+          }
+        }
+      }
+    }
+    copy.options.forEach( ( o ) => [ 'siteurl', 'home' ].includes( o.option_name ) && ( o.option_value = 'https://demo.forumwp.com/d-k3j9x0qz2a' ) );
+    log.push( `Db::replace(): ${ pairs.map( ( [ a, b ] ) => `${ a } → ${ b }` ).join( ', ' ) }` );
+    if ( fix.dates ) {
+      const shift = Math.floor( ( now - built ) / HOUR ) * HOUR; // whole hours
+      log.push( `Db::shift_dates(): every date + ${ shift } seconds (${ shift / HOUR } hours)` );
+      const move = ( s ) => iso( fromIso( s ) + shift );
+      copy.forumwp_posts.forEach( ( p ) => {
+        p.created_at = move( p.created_at );
+        p.meta = p.meta.replace( /\d{4}-\d\d-\d\d \d\d:\d\d:\d\d/g, move );
+      } );
+    }
+    log.forEach( ( l ) => console.log( l ) );
+
+    // What Kemi sees in her new sandbox.
+    const roles = copy.options.find( ( o ) => o.option_name === `wp_${ site }_user_roles` );
+    const file = JSON.parse( copy.forumwp_library[ 0 ].meta ).url;
+    const event = JSON.parse( copy.forumwp_posts[ 1 ].meta ).event_start;
+    setOut( {
+      log,
+      sees: [
+        roles ? 'Dashboard: opens (her account is an administrator: wp_57_user_roles defines the role).' : 'Dashboard: "Sorry, you are not allowed to access this page." (no wp_57_user_roles, so no roles on site 57)',
+        `Library, Starter guide.pdf → ${ file } ${ file.includes( '/template/' ) ? '→ 403 (the template is for network admins only)' : '→ 200' }`,
+        `"${ copy.forumwp_posts[ 0 ].title }": posted ${ ago( fromIso( copy.forumwp_posts[ 0 ].created_at ) ).replace( " (it's over)", '' ) }`,
+        `Spring meetup (live): starts ${ ago( fromIso( event ) ) }`,
+      ],
+    } );
+  };
+
+  return (
+    <div style={ { maxWidth: 760 } }>
+      <CheckboxControl __nextHasNoMarginBottom label="Rename the roles option (wp_2_user_roles → wp_57_user_roles)" checked={ fix.roles } onChange={ toggle( 'roles' ) } />
+      <CheckboxControl __nextHasNoMarginBottom label="Replace addresses inside JSON too (escaped slashes)" checked={ fix.json } onChange={ toggle( 'json' ) } />
+      <CheckboxControl __nextHasNoMarginBottom label="Move the dates forward by the template's age" checked={ fix.dates } onChange={ toggle( 'dates' ) } />
+      <Button variant="primary" onClick={ start }>Start a demo</Button>
+      { out && (
+        <>
+          <h3>What Kemi sees at /d-k3j9x0qz2a/</h3>
+          <ul>{ out.sees.map( ( l, i ) => <li key={ i }>{ l }</li> ) }</ul>
+          <h3>Statements</h3>
+          <ol className="fwp-log">{ out.log.map( ( l, i ) => <li key={ i }>{ l }</li> ) }</ol>
+        </>
+      ) }
+    </div>
+  );
+};
+
+document.head.insertAdjacentHTML( 'beforeend', `<style>
+  .fwp-log li { word-break: break-word; margin-bottom: 2px; font: 12px/1.5 ui-monospace, Menlo, monospace; }
+</style>` ); // Added so this runs on its own
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <Demo /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>

@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>42.3: Posts::may_announce(): who publishing a draft may email everyone, and when it counts</title>
+<!-- ForumWP React course, 42.3: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 42.3
+// @title Posts::may_announce(): who publishing a draft may email everyone, and when it counts
+// @section 42.5
+// @click Publish
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, CheckboxControl, SelectControl } from '@wordpress/components'; // Added so this runs on its own
+
+// Added so this runs on its own: three people and their community roles *now*.
+const PEOPLE = { 1: 'Ada', 2: 'Mei', 7: 'Tunde' };
+const PER_HOUR = 3; // forumwp_announcements_per_hour
+
+// ForumWP, src/Posts/Posts.php: may_announce(). All four must hold.
+const mayAnnounce = ( post, userId, roleOf ) =>
+  !! post.meta.announce && !! userId && post.user_id === userId && roleOf( userId ) === 'admin';
+
+const Demo = () => {
+  const [ author, setAuthor ] = useState( '1' );
+  const [ publisher, setPublisher ] = useState( '1' );
+  const [ roles, setRoles ] = useState( { 1: 'admin', 2: 'moderator', 7: 'member' } );
+  const [ asked, setAsked ] = useState( true );
+  const [ wasAdmin, setWasAdmin ] = useState( true );
+  const [ heldOnPublish, setHeld ] = useState( false );
+  const [ emailOn, setEmailOn ] = useState( true );
+  const [ used, setUsed ] = useState( 0 );
+  const [ log, setLog ] = useState( [] );
+  const roleOf = ( id ) => roles[ id ];
+
+  const publish = () => {
+    // Saving the draft: Posts::create() keeps "announce" only for a community admin's own draft.
+    const post = { user_id: Number( author ), meta: asked && wasAdmin ? { announce: 1 } : {} };
+    const user = Number( publisher );
+    const announce = mayAnnounce( post, user, roleOf );
+    const parts = [
+      `asks: ${ !! post.meta.announce }`,
+      `publisher is the author: ${ post.user_id === user }`,
+      `publisher is a community admin now: ${ roleOf( user ) === 'admin' }`,
+    ];
+    let line;
+    if ( announce && emailOn && used >= PER_HOUR ) {
+      line = '429 forumwp_rate_limited: You have emailed everyone several times in the last hour. Please wait a while before publishing this. (Still a draft.)';
+    } else {
+      const status = heldOnPublish && post.user_id === user ? 'pending' : 'published';
+      const sent = announce && emailOn && status === 'published';
+      if ( sent ) {
+        setUsed( ( n ) => n + 1 );
+      }
+      line = `${ status }; ${ sent ? 'everyone is emailed (counted: ' + ( used + 1 ) + ' of ' + PER_HOUR + ' this hour)' : announce && status === 'pending' ? 'held: nobody is emailed yet, and nothing is counted' : '"announce" removed from the meta: nobody is emailed' }`;
+    }
+    const full = `${ PEOPLE[ user ] } publishes ${ PEOPLE[ post.user_id ] }'s draft · may_announce() = ${ announce } (${ parts.join( ', ' ) }) → ${ line }`;
+    console.log( full );
+    setLog( ( l ) => [ full, ...l ].slice( 0, 8 ) );
+  };
+
+  const people = Object.entries( PEOPLE ).map( ( [ value, label ] ) => ( { value, label } ) );
+  return (
+    <div style={ { maxWidth: 760 } }>
+      <div className="fwp-row">
+        <SelectControl __nextHasNoMarginBottom label="The draft's author" value={ author } options={ people } onChange={ setAuthor } />
+        <SelectControl __nextHasNoMarginBottom label="Who presses Publish" value={ publisher } options={ people } onChange={ setPublisher } />
+      </div>
+      <div className="fwp-row">
+        { Object.keys( PEOPLE ).map( ( id ) => (
+          <SelectControl
+            __nextHasNoMarginBottom
+            key={ id }
+            label={ `${ PEOPLE[ id ] }'s role now` }
+            value={ roles[ id ] }
+            options={ [ 'admin', 'moderator', 'member' ].map( ( r ) => ( { value: r, label: r } ) ) }
+            onChange={ ( r ) => setRoles( ( all ) => ( { ...all, [ id ]: r } ) ) }
+          />
+        ) ) }
+      </div>
+      <CheckboxControl __nextHasNoMarginBottom label='The author ticked "Also email this to everyone"' checked={ asked } onChange={ setAsked } />
+      <CheckboxControl __nextHasNoMarginBottom label="The author was a community admin when they saved it (otherwise the tick isn't kept)" checked={ wasAdmin } onChange={ setWasAdmin } />
+      <CheckboxControl __nextHasNoMarginBottom label="Publishing it, the author's own draft is held for review (a refused word)" checked={ heldOnPublish } onChange={ setHeld } />
+      <CheckboxControl __nextHasNoMarginBottom label="Email notifications are on (Settings)" checked={ emailOn } onChange={ setEmailOn } />
+      <p>
+        <Button variant="primary" onClick={ publish }>Publish</Button>{ ' ' }
+        <Button variant="tertiary" onClick={ () => setUsed( 0 ) }>An hour passes ({ used } of { PER_HOUR } used)</Button>
+      </p>
+      <ol className="fwp-log">{ log.map( ( l, i ) => <li key={ i }>{ l }</li> ) }</ol>
+    </div>
+  );
+};
+
+document.head.insertAdjacentHTML( 'beforeend', `<style>
+  .fwp-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+  .fwp-log li { word-break: break-word; margin-bottom: 4px; font-size: 13px; }
+</style>` ); // Added so this runs on its own
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <Demo /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>
