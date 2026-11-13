@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>46.2: Batches, claims, the batch that waited for itself, and the watchdog</title>
+<!-- ForumWP React course, 46.2: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 46.2
+// @title Batches, claims, the batch that waited for itself, and the watchdog
+// @section 46.4
+// @click Send
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, CheckboxControl } from '@wordpress/components'; // Added so this runs on its own
+
+// Added so this runs on its own: a pretend database (broadcasts, broadcast_recipients),
+// a pretend Action Scheduler (a jobs list with pending, in-progress and complete) and a
+// pretend mail service that records who got what. 12 members, 5 emails a batch.
+const RATE = 5;
+const STALE = 15; // minutes
+const db = { now: 0, broadcast: null, rows: [], jobs: [], inbox: [] };
+const reset = () => Object.assign( db, { now: 0, broadcast: { id: 17, status: 'draft' }, rows: [], jobs: [], inbox: [] } );
+reset();
+
+// Action Scheduler: as_has_scheduled_action() counts pending AND in-progress jobs.
+const asHasScheduled = () => db.jobs.some( ( j ) => j.status === 'pending' || j.status === 'in-progress' );
+// Sender::pending(): pending jobs only.
+const pending = () => db.jobs.some( ( j ) => j.status === 'pending' );
+const schedule = ( delay ) => db.jobs.push( { id: db.jobs.length + 1, at: db.now + delay, status: 'pending' } );
+
+const options = { oldCheck: false, crash: false };
+const next = ( delay ) => {
+  const waiting = options.oldCheck ? asHasScheduled() : pending();
+  if ( ! waiting ) {
+    schedule( delay );
+  }
+};
+
+// Sender::begin(): only a draft starts; everyone is queued at once.
+const begin = () => {
+  if ( db.broadcast.status !== 'draft' ) {
+    return 'Already started: this UPDATE changed no row.';
+  }
+  db.broadcast.status = 'sending';
+  db.rows = Array.from( { length: 12 }, ( _, i ) => ( { user: i + 1, status: 'queued', claim: null, claimedAt: null } ) );
+  next( 0 );
+  return 'Started: 12 members queued, a batch scheduled now.';
+};
+
+// Sender::claim(): UPDATE … WHERE status = 'queued', then read back our own claim.
+const claim = ( limit, candidates ) => {
+  const token = Math.random().toString( 36 ).slice( 2, 8 );
+  const ids = candidates ?? db.rows.filter( ( r ) => r.status === 'queued' ).slice( 0, limit ).map( ( r ) => r.user );
+  db.rows.forEach( ( r ) => {
+    if ( ids.includes( r.user ) && r.status === 'queued' ) {
+      Object.assign( r, { status: 'sending', claim: token, claimedAt: db.now } );
+    }
+  } );
+  return db.rows.filter( ( r ) => r.claim === token && r.status === 'sending' ).map( ( r ) => r.user );
+};
+
+// Sender::batch()
+const batch = ( candidates ) => {
+  if ( db.broadcast.status !== 'sending' ) {
+    return 'Not sending: nothing to do.';
+  }
+  db.rows.forEach( ( r ) => {
+    if ( r.status === 'sending' && db.now - r.claimedAt >= STALE ) {
+      Object.assign( r, { status: 'failed', error: 'interrupted' } );
+    }
+  } );
+  const mine = claim( RATE, candidates );
+  for ( const [ i, user ] of mine.entries() ) {
+    if ( options.crash && i === 2 ) {
+      return `Claimed ${ mine.length }, sent 2, then the server restarted. Rows ${ mine.slice( 2 ).join( ', ' ) } are left "sending".`;
+    }
+    db.inbox.push( user );
+    db.rows.find( ( r ) => r.user === user ).status = 'sent';
+  }
+  const queued = db.rows.filter( ( r ) => r.status === 'queued' ).length;
+  const sending = db.rows.filter( ( r ) => r.status === 'sending' ).length;
+  if ( queued || sending ) {
+    next( 1 );
+  } else {
+    db.broadcast.status = 'sent';
+  }
+  return `Claimed and sent ${ mine.length ? mine.join( ', ' ) : 'nobody' }.`;
+};
+
+// ActionScheduler::runner()->process_action(): in-progress while it runs, then complete.
+const runNext = () => {
+  const job = db.jobs.find( ( j ) => j.status === 'pending' && j.at <= db.now );
+  if ( ! job ) {
+    return db.jobs.some( ( j ) => j.status === 'pending' ) ? 'The next job is due in a minute: let a minute pass.' : 'No job is waiting.';
+  }
+  job.status = 'in-progress';
+  const said = batch();
+  job.status = 'complete';
+  return `Job ${ job.id }: ${ said }`;
+};
+
+// Sender::watchdog(), once a day.
+const watchdog = () => ( db.broadcast.status === 'sending' && ! pending() ? ( next( 0 ), 'A sending broadcast had no job waiting: scheduled one.' ) : 'Nothing to do.' );
+
+const Demo = () => {
+  const [ log, setLog ] = useState( [] );
+  const [ , redraw ] = useState( 0 );
+  const [ oldCheck, setOldCheck ] = useState( false );
+  const [ crash, setCrash ] = useState( false );
+  options.oldCheck = oldCheck;
+  options.crash = crash;
+  const act = ( label, fn ) => {
+    const line = `[minute ${ db.now }] ${ label }: ${ fn() }`;
+    console.log( line );
+    setLog( ( l ) => [ line, ...l ].slice( 0, 14 ) );
+  };
+  const counts = db.rows.reduce( ( c, r ) => ( { ...c, [ r.status ]: ( c[ r.status ] ?? 0 ) + 1 } ), {} );
+  const twice = db.inbox.length - new Set( db.inbox ).size;
+
+  return (
+    <div style={ { maxWidth: 760 } }>
+      <CheckboxControl __nextHasNoMarginBottom label="Use the first version's check, as_has_scheduled_action() (counts the running job)" checked={ oldCheck } onChange={ setOldCheck } />
+      <CheckboxControl __nextHasNoMarginBottom label="The server restarts in the middle of the next batch" checked={ crash } onChange={ setCrash } />
+      <p>
+        <Button variant="primary" onClick={ () => act( 'Send', begin ) }>Send</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => act( 'Run the next job', runNext ) }>Run the next job</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => act( 'A minute passes', () => ( ( db.now += 1 ), 'Tick.' ) ) }>A minute passes</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => act( '15 minutes pass', () => ( ( db.now += 15 ), 'Tick.' ) ) }>15 minutes pass</Button>
+      </p>
+      <p>
+        <Button variant="secondary" onClick={ () => act( 'Two batches at once', () => {
+          // Both SELECT the same candidates before either UPDATEs.
+          const same = db.rows.filter( ( r ) => r.status === 'queued' ).slice( 0, RATE ).map( ( r ) => r.user );
+          return `A: ${ batch( same ) } B: ${ batch( same ) }`;
+        } ) }>Two batches at once</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => act( 'Someone clears the jobs table', () => ( ( db.jobs = [] ), 'Every job is gone.' ) ) }>Clear the jobs table</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => act( 'Daily watchdog', watchdog ) }>Daily watchdog</Button>{ ' ' }
+        <Button variant="tertiary" onClick={ () => { reset(); setLog( [] ); redraw( ( n ) => n + 1 ); } }>Start again</Button>
+      </p>
+      <p className="fwp-muted">
+        Broadcast: { db.broadcast.status } · rows: { Object.entries( counts ).map( ( [ k, v ] ) => `${ v } ${ k }` ).join( ', ' ) || 'none' } · jobs waiting: { db.jobs.filter( ( j ) => j.status === 'pending' ).length } · emails sent: { db.inbox.length } · got it twice: { twice }
+      </p>
+      <ol className="fwp-log">{ log.map( ( line, i ) => <li key={ i }>{ line }</li> ) }</ol>
+    </div>
+  );
+};
+
+document.head.insertAdjacentHTML( 'beforeend', '<style>.fwp-log li{font-size:13px;margin-bottom:4px}.fwp-muted{color:#757575}</style>' ); // Added so this runs on its own
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <Demo /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>
