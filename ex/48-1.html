@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>48.1: An import you can stop, crash and run again: batches by id, the map, claims, and a deletion that sticks</title>
+<!-- ForumWP React course, 48.1: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 48.1
+// @title An import you can stop, crash and run again: batches by id, the map, claims, and a deletion that sticks
+// @section 48.5
+// @click Start import
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, CheckboxControl } from '@wordpress/components'; // Added so this runs on its own
+
+// Added so this runs on its own: a pretend old forum (bbPress replies and one follow), a
+// pretend ForumWP (comments, follows, the import_map with claims) and the import state
+// saved after each batch. 5 replies a batch (the real one does 200, or 20 seconds).
+const LIMIT = 5;
+const old = { replies: Array.from( { length: 13 }, ( _, i ) => ( { id: i + 1 } ) ), follows: [ [ 'Tunde', 'Ada' ] ] };
+const fwp = { comments: new Set(), follows: new Set(), map: new Map(), claims: new Set(), nextId: 500 };
+let saved = { status: 'idle', step: 'replies', after: 0, page: 0, imported: 0, existing: 0, skipped: 0 };
+const options = { crash: false, offset: false };
+
+// Writer::comment(), shortened: the map first; a mapped comment that's gone was deleted in ForumWP.
+const writeComment = ( row ) => {
+  const id = fwp.map.get( row.id );
+  if ( id ) {
+    return fwp.comments.has( id ) ? 'existing' : 'skipped';
+  }
+  const newId = fwp.nextId++;
+  fwp.comments.add( newId );
+  fwp.map.set( row.id, newId ); // Map::set() right after the insert.
+  return 'imported';
+};
+
+// Writer::follow(): a claim, so an unfollow in ForumWP sticks.
+const writeFollow = ( [ a, b ] ) => {
+  const key = `follow:${ a }:${ b }`;
+  if ( fwp.claims.has( key ) ) {
+    return 'existing';
+  }
+  fwp.follows.add( `${ a }→${ b }` );
+  fwp.claims.add( key );
+  return 'imported';
+};
+
+// Import::run() and Source::walk(), shortened.
+const runBatch = () => {
+  if ( saved.status !== 'running' ) {
+    return 'Nothing to run.';
+  }
+  const state = { ...saved }; // Read the saved state.
+  if ( state.step === 'follows' ) {
+    old.follows.forEach( ( f ) => state[ writeFollow( f ) ]++ );
+    state.status = 'done';
+    saved = state;
+    return 'Follows step done. Import finished.';
+  }
+  const sorted = [ ...old.replies ].sort( ( a, b ) => a.id - b.id );
+  const rows = options.offset
+    ? sorted.slice( state.page * LIMIT, state.page * LIMIT + LIMIT ) // LIMIT 5 OFFSET page*5
+    : sorted.filter( ( r ) => r.id > state.after ).slice( 0, LIMIT ); // WHERE ID > after ORDER BY ID LIMIT 5
+  const result = { imported: 0, existing: 0, skipped: 0 };
+  rows.forEach( ( row ) => result[ writeComment( row ) ]++ );
+  if ( options.crash ) {
+    return `Wrote ${ rows.map( ( r ) => r.id ).join( ', ' ) }, then the server restarted before the state was saved.`;
+  }
+  const done = rows.length < LIMIT;
+  Object.keys( result ).forEach( ( k ) => ( state[ k ] += result[ k ] ) );
+  state.after = done ? 0 : rows[ rows.length - 1 ].id;
+  state.page = done ? 0 : state.page + 1;
+  if ( done ) {
+    state.step = 'follows';
+  }
+  saved = state; // update_option(), after the work.
+  return `Replies ${ rows.map( ( r ) => r.id ).join( ', ' ) || '(none)' }: ${ JSON.stringify( result ) }${ done ? ' · step done' : ` · next after ${ state.after }` }.`;
+};
+
+const start = () => {
+  saved = { status: 'running', step: 'replies', after: 0, page: 0, imported: 0, existing: 0, skipped: 0 };
+  return 'Started: counts reset, the map kept.';
+};
+
+const Demo = () => {
+  const [ log, setLog ] = useState( [] );
+  const [ crash, setCrash ] = useState( false );
+  const [ offset, setOffset ] = useState( false );
+  options.crash = crash;
+  options.offset = offset;
+  const act = ( label, fn ) => {
+    const line = `${ label }: ${ fn() }`;
+    console.log( line );
+    setLog( ( l ) => [ line, ...l ].slice( 0, 14 ) );
+  };
+  const missing = old.replies.filter( ( r ) => ! fwp.map.has( r.id ) ).map( ( r ) => r.id );
+  const firstMapped = [ ...fwp.map.values() ].find( ( id ) => fwp.comments.has( id ) );
+
+  return (
+    <div style={ { maxWidth: 780 } }>
+      <CheckboxControl __nextHasNoMarginBottom label="The server restarts during the next batch" checked={ crash } onChange={ setCrash } />
+      <CheckboxControl __nextHasNoMarginBottom label="Page with OFFSET instead of WHERE ID > after (the mistake)" checked={ offset } onChange={ setOffset } />
+      <p>
+        <Button variant="primary" onClick={ () => act( 'Start import', start ) }>{ saved.status === 'idle' ? 'Start import' : 'Start over / Import again' }</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => act( 'Run the next batch', runBatch ) }>Run the next batch</Button>
+      </p>
+      <p>
+        <Button variant="secondary" onClick={ () => act( 'An admin deletes a comment in ForumWP', () => ( firstMapped ? ( fwp.comments.delete( firstMapped ), `Comment ${ firstMapped } deleted.` ) : 'Nothing imported yet.' ) ) }>Delete an imported comment</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => act( 'Tunde unfollows Ada in ForumWP', () => ( fwp.follows.delete( 'Tunde→Ada' ), 'Unfollowed.' ) ) }>Tunde unfollows Ada</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => act( 'Someone deletes reply 2 on the old forum', () => ( ( old.replies = old.replies.filter( ( r ) => r.id !== 2 ) ), 'Every later row moves up one.' ) ) }>Old forum loses reply 2</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => act( 'New replies on the old forum', () => {
+          const max = Math.max( ...old.replies.map( ( r ) => r.id ) );
+          old.replies.push( { id: max + 1 }, { id: max + 2 } );
+          return `Replies ${ max + 1 } and ${ max + 2 } added.`;
+        } ) }>2 new replies on the old forum</Button>
+      </p>
+      <p className="fwp-muted">
+        Saved state: { saved.status }, step { saved.step }, after { saved.after }{ offset ? `, page ${ saved.page }` : '' } · imported { saved.imported }, already imported { saved.existing }, skipped { saved.skipped }
+        <br />
+        ForumWP: { fwp.comments.size } comments, map rows { fwp.map.size }, follows: { [ ...fwp.follows ].join( ', ' ) || 'none' } · old replies never imported: { missing.join( ', ' ) || 'none' }
+      </p>
+      <ol className="fwp-log">{ log.map( ( line, i ) => <li key={ i }>{ line }</li> ) }</ol>
+    </div>
+  );
+};
+
+document.head.insertAdjacentHTML( 'beforeend', '<style>.fwp-log li{font-size:13px;margin-bottom:4px}.fwp-muted{color:#757575}</style>' ); // Added so this runs on its own
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <Demo /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>

@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>48.2: A file copy the clean-up deleted is copied again, notifications stay quiet during a batch, and members-only content waits for a decision</title>
+<!-- ForumWP React course, 48.2: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 48.2
+// @title A file copy the clean-up deleted is copied again, notifications stay quiet during a batch, and members-only content waits for a decision
+// @section 48.9
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, CheckboxControl, SelectControl } from '@wordpress/components'; // Added so this runs on its own
+
+// Added so this runs on its own: pretend attachments, an import_map, a daily clean-up of
+// uploads no post uses, a notifications outbox and a pretend POST /forumwp/v1/import/buddyboss.
+const site = { attachments: new Set(), posts: [], map: new Map(), nextId: 900, outbox: [] };
+
+// ---- 1. Files: Media::mapped() ----
+const copyPhoto = () => {
+  const id = site.nextId++;
+  site.attachments.add( id );
+  site.map.set( 'bp/media/33', id );
+  return id;
+};
+const mapped = ( key, useFix ) => {
+  const id = site.map.get( key ) ?? 0;
+  if ( useFix && id && ! site.attachments.has( id ) ) {
+    site.map.delete( key ); // Gone: forget it, so the file is copied again.
+    return 0;
+  }
+  return id;
+};
+const FilesPanel = ( { say } ) => {
+  const [ fix, setFix ] = useState( true );
+  return (
+    <section>
+      <h3>1. A copy that's gone is copied again</h3>
+      <CheckboxControl __nextHasNoMarginBottom label="Check the copy still exists (Media::mapped(), 0.25.0)" checked={ fix } onChange={ setFix } />
+      <Button variant="secondary" onClick={ () => say( 'Run 1', () => `copied photo 33 as attachment ${ copyPhoto() }, then stopped before saving its post.` ) }>Run 1 stops part-way</Button>{ ' ' }
+      <Button variant="secondary" onClick={ () => say( 'Overnight clean-up', () => {
+        const used = new Set( site.posts.flatMap( ( p ) => p.attachments ) );
+        const gone = [ ...site.attachments ].filter( ( id ) => ! used.has( id ) );
+        gone.forEach( ( id ) => site.attachments.delete( id ) );
+        return gone.length ? `deleted unused attachment ${ gone.join( ', ' ) }.` : 'nothing unused.';
+      } ) }>Overnight clean-up</Button>{ ' ' }
+      <Button variant="secondary" onClick={ () => say( 'Run 2', () => {
+        const copy = mapped( 'bp/media/33', fix ) || copyPhoto();
+        site.posts.push( { id: 'post from update 12', attachments: [ copy ] } );
+        return site.attachments.has( copy ) ? `the post uses attachment ${ copy }: the photo shows.` : `the post uses attachment ${ copy }, which doesn't exist: a broken image.`;
+      } ) }>Run 2 imports the post</Button>
+    </section>
+  );
+};
+
+// ---- 2. Quiet mode: Import::running() ----
+let running = false;
+const notify = ( text ) => {
+  if ( running ) {
+    return; // Notifications::add() returns early during an import.
+  }
+  site.outbox.push( text );
+};
+const QuietPanel = ( { say } ) => {
+  const [ noFinally, setNoFinally ] = useState( false );
+  const [ throws, setThrows ] = useState( false );
+  const batch = () => {
+    const work = () => {
+      [ 'reply 1 from 2019', 'reply 2 from 2019', 'reply 3 from 2019' ].forEach( ( r ) => notify( `New reply: ${ r }` ) );
+      if ( throws ) {
+        throw new Error( 'A database error in the middle of the batch' );
+      }
+    };
+    running = true;
+    if ( noFinally ) {
+      work();
+      running = false; // Never reached when work() throws.
+      return;
+    }
+    try {
+      work();
+    } finally {
+      running = false;
+    }
+  };
+  return (
+    <section>
+      <h3>2. Quiet while importing</h3>
+      <CheckboxControl __nextHasNoMarginBottom label="The batch throws" checked={ throws } onChange={ setThrows } />
+      <CheckboxControl __nextHasNoMarginBottom label="Reset the flag without finally (the mistake)" checked={ noFinally } onChange={ setNoFinally } />
+      <Button variant="secondary" onClick={ () => say( 'Import batch', () => {
+        try {
+          batch();
+          return '3 old replies imported.';
+        } catch ( e ) {
+          return `failed: ${ e.message }. Import::running() is now ${ running }.`;
+        }
+      } ) }>Run an import batch</Button>{ ' ' }
+      <Button variant="secondary" onClick={ () => say( 'Later in the same request, Ada replies', () => {
+        const before = site.outbox.length;
+        notify( 'New reply from Ada' );
+        return site.outbox.length > before ? 'Tunde is notified.' : 'nobody is notified: the flag was still on.';
+      } ) }>Ada replies for real</Button>
+      <p className="fwp-muted">Notifications sent: { site.outbox.length ? site.outbox.join( ' · ' ) : 'none' }</p>
+    </section>
+  );
+};
+
+// ---- 3. Private stays private: Import::start() ----
+const startImport = ( { access, privateNetwork, makePublic } ) => {
+  const reason = privateNetwork ? 'BuddyBoss was set up as a private network: only logged-in members could see it.' : '';
+  if ( reason && access === 'open' && ! makePublic ) {
+    return { status: 409, code: 'forumwp_import_private', message: `${ reason } Your community is open to everyone, so it would become public…` };
+  }
+  return { status: 200, state: 'running' };
+};
+const PrivacyPanel = ( { say } ) => {
+  const [ access, setAccess ] = useState( 'open' );
+  const [ privateNetwork, setPrivateNetwork ] = useState( true );
+  const [ makePublic, setMakePublic ] = useState( false );
+  // ImportController::present() sends this sentence, or ''.
+  const privacy = privateNetwork && access === 'open' ? 'BuddyBoss was set up as a private network…' : '';
+  const send = ( body ) => () => {
+    const answer = startImport( body );
+    return answer.status === 200 ? 'started.' : `${ answer.status } ${ answer.code }`;
+  };
+  return (
+    <section>
+      <h3>3. Members-only content waits for a decision</h3>
+      <CheckboxControl __nextHasNoMarginBottom label="BuddyBoss was a private network" checked={ privateNetwork } onChange={ setPrivateNetwork } />
+      <SelectControl __nextHasNoMarginBottom __next40pxDefaultSize label="ForumWP access" value={ access } options={ [ { value: 'open', label: 'Open to everyone' }, { value: 'members', label: 'Members only' } ] } onChange={ setAccess } />
+      { privacy && <CheckboxControl __nextHasNoMarginBottom label="I understand: import it and make it public" checked={ makePublic } onChange={ setMakePublic } /> }
+      <p>
+        <Button variant="primary" disabled={ !! privacy && ! makePublic } onClick={ () => say( 'Start import (the screen)', send( { access, privateNetwork, makePublic } ) ) }>Start import</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => say( 'POST /import/buddyboss without make_public (WP-CLI, a script)', send( { access, privateNetwork, makePublic: false } ) ) }>Send the request without the checkbox</Button>
+      </p>
+    </section>
+  );
+};
+
+const Demo = () => {
+  const [ log, setLog ] = useState( [] );
+  const say = ( label, fn ) => {
+    const line = `${ label }: ${ fn() }`;
+    console.log( line );
+    setLog( ( l ) => [ line, ...l ].slice( 0, 12 ) );
+  };
+  return (
+    <div style={ { maxWidth: 760 } }>
+      <FilesPanel say={ say } />
+      <QuietPanel say={ say } />
+      <PrivacyPanel say={ say } />
+      <ol className="fwp-log">{ log.map( ( line, i ) => <li key={ i }>{ line }</li> ) }</ol>
+    </div>
+  );
+};
+
+document.head.insertAdjacentHTML( 'beforeend', '<style>.fwp-log li{font-size:13px;margin-bottom:4px}.fwp-muted{color:#757575;font-size:13px}section{border-bottom:1px solid #ddd;padding-bottom:12px;margin-bottom:12px}h3{margin:8px 0}</style>' ); // Added so this runs on its own
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <Demo /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>
