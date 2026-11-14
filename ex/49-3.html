@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>49.3: A challenge&#x27;s days in London around the clock change, a check-in tapped twice, and a reward given once</title>
+<!-- ForumWP React course, 49.3: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 49.3
+// @title A challenge's days in London around the clock change, a check-in tapped twice, and a reward given once
+// @section 49.10
+// @click Check in for today
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, CheckboxControl, SelectControl } from '@wordpress/components'; // Added so this runs on its own
+
+// Added so this runs on its own: a pretend clock, the site's time zone, a challenge_members
+// table, a points ledger with its unique key and a pretend POST /challenges/7/checkin.
+// Shortened from ForumWP Pro's Challenges (days) and Progress (check_in, maybe_finish).
+const DAY = 86400;
+const challenge = { id: 7, title: 'Ship every day', startsOn: '2026-10-24', endsOn: '2026-10-30', target: 3, points: 50 };
+
+// wp_date( 'Y-m-d', $time ) in a time zone.
+const dateIn = ( time, tz ) => new Intl.DateTimeFormat( 'en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' } ).format( time * 1000 );
+const clockIn = ( time, tz ) => new Intl.DateTimeFormat( 'en-GB', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' } ).format( time * 1000 );
+// How far ahead of UTC a zone is at a moment, in seconds.
+const offset = ( time, tz ) => {
+  const p = Object.fromEntries( new Intl.DateTimeFormat( 'en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' } ).formatToParts( time * 1000 ).map( ( x ) => [ x.type, Number( x.value ) ] ) );
+  return Date.UTC( p.year, p.month - 1, p.day, p.hour, p.minute, p.second ) / 1000 - time;
+};
+// Challenges::midnight(): the UTC moment a date starts in the zone (what DateTimeImmutable does).
+const midnight = ( day, tz ) => {
+  const guess = Date.UTC( ...day.split( '-' ).map( ( n, i ) => Number( n ) - ( i === 1 ? 1 : 0 ) ) ) / 1000;
+  const first = guess - offset( guess, tz );
+  return guess - offset( first, tz );
+};
+// Challenges::days_between(): dates at noon UTC, so no daylight saving gets in.
+const daysBetween = ( from, to ) => Math.round( ( Date.parse( `${ to }T12:00:00Z` ) - Date.parse( `${ from }T12:00:00Z` ) ) / ( DAY * 1000 ) );
+const dayNumber = ( time, tz ) => {
+  const day = dateIn( time, tz );
+  return day < challenge.startsOn ? 0 : daysBetween( challenge.startsOn, day ) + 1;
+};
+// The mistake: the start of day n as the first midnight plus (n - 1) days of seconds.
+const wrongDayNumber = ( time, tz ) => {
+  const start = midnight( challenge.startsOn, tz );
+  return time < start ? 0 : Math.floor( ( time - start ) / DAY ) + 1;
+};
+
+// The database: one row per member, and a ledger with UNIQUE KEY (reason, ref_id, user).
+const db = { row: { days: '', progress: 0, finishedAt: null }, ledger: new Set(), total: 0, celebrations: 0 };
+const options = { atomic: true, claim: true, ledger: true };
+
+// Points::award(): INSERT IGNORE into the ledger; the total moves only if a row was added.
+const award = ( points ) => {
+  const key = `challenge:${ challenge.id }:ada`;
+  if ( options.ledger && db.ledger.has( key ) ) {
+    return 0;
+  }
+  db.ledger.add( key );
+  db.total += points;
+  return 1;
+};
+// Progress::maybe_finish(): UPDATE … SET finished_at = now WHERE … AND finished_at IS NULL.
+const maybeFinish = ( now ) => {
+  if ( db.row.progress < challenge.target ) {
+    return '';
+  }
+  const claimed = ! options.claim || db.row.finishedAt === null ? 1 : 0;
+  if ( claimed !== 1 ) {
+    return ' Already finished: no reward.';
+  }
+  db.row.finishedAt = now;
+  db.celebrations++;
+  return award( challenge.points ) ? ` Finished! +${ challenge.points } points.` : ' Finished again, but the ledger refused the points.';
+};
+// Progress::check_in(): the day from the server's clock, added only if it isn't there.
+const checkIn = ( now, tz ) => {
+  const day = dayNumber( now, tz );
+  if ( day < 1 || day > daysBetween( challenge.startsOn, challenge.endsOn ) + 1 ) {
+    return '409 There is nothing to check in to today.';
+  }
+  const list = db.row.days ? db.row.days.split( ',' ) : [];
+  if ( options.atomic && `,${ db.row.days },`.includes( `,${ day },` ) ) {
+    return `Day ${ day }: 0 rows changed (already checked in).`;
+  }
+  db.row.days = [ ...list, String( day ) ].join( ',' );
+  db.row.progress = Math.min( db.row.days.split( ',' ).length, challenge.target );
+  return `Day ${ day }: 1 row changed, progress ${ db.row.progress }/${ challenge.target }.` + maybeFinish( now );
+};
+
+// Moments to try, as UTC timestamps.
+const MOMENTS = [
+  [ 'Sat 24 Oct, 20:00 UTC', Date.UTC( 2026, 9, 24, 20 ) / 1000 ],
+  [ 'Sun 25 Oct, 23:30 UTC', Date.UTC( 2026, 9, 25, 23, 30 ) / 1000 ],
+  [ 'Mon 26 Oct, 20:00 UTC', Date.UTC( 2026, 9, 26, 20 ) / 1000 ],
+  [ 'Tue 27 Oct, 09:00 UTC', Date.UTC( 2026, 9, 27, 9 ) / 1000 ],
+  [ 'Wed 28 Oct, 22:30 UTC', Date.UTC( 2026, 9, 28, 22, 30 ) / 1000 ],
+];
+
+const Demo = () => {
+  const [ tz, setTz ] = useState( 'Europe/London' );
+  const [ at, setAt ] = useState( 1 );
+  const [ atomic, setAtomic ] = useState( true );
+  const [ claim, setClaim ] = useState( true );
+  const [ ledger, setLedger ] = useState( true );
+  const [ log, setLog ] = useState( [] );
+  Object.assign( options, { atomic, claim, ledger } );
+  const now = MOMENTS[ at ][ 1 ];
+  const say = ( line ) => {
+    console.log( line );
+    setLog( ( l ) => [ line, ...l ].slice( 0, 12 ) );
+  };
+  const nextMidnight = midnight( new Date( Date.parse( `${ dateIn( now, tz ) }T12:00:00Z` ) + DAY * 1000 ).toISOString().slice( 0, 10 ), tz );
+  const left = Math.round( ( nextMidnight - now ) / 60 );
+
+  return (
+    <div style={ { maxWidth: 820 } }>
+      <SelectControl __next40pxDefaultSize __nextHasNoMarginBottom label="The site's time zone" value={ tz } options={ [ { label: 'Europe/London (clocks go back on Sun 25 Oct)', value: 'Europe/London' }, { label: 'Africa/Lagos (no daylight saving)', value: 'Africa/Lagos' } ] } onChange={ setTz } />
+      <SelectControl __next40pxDefaultSize __nextHasNoMarginBottom label="The server's clock" value={ String( at ) } options={ MOMENTS.map( ( [ label ], i ) => ( { label, value: String( i ) } ) ) } onChange={ ( v ) => setAt( Number( v ) ) } />
+      <p>
+        In { tz }: <b>{ clockIn( now, tz ) }</b>. Day { dayNumber( now, tz ) } of { challenge.title } (adding 86,400 seconds would say day { wrongDayNumber( now, tz ) }). Today ends in { Math.floor( left / 60 ) } h { left % 60 } min.
+      </p>
+      <p>
+        <Button variant="primary" onClick={ () => say( `Check in: ${ checkIn( now, tz ) }` ) }>Check in for today</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => say( `Two taps at once: ${ checkIn( now, tz ) } | ${ checkIn( now, tz ) }` ) }>Tap twice at once</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => say( `A recount right after:${ maybeFinish( now ) || ' not finished yet.' }` ) }>A recount runs right after</Button>
+      </p>
+      <CheckboxControl __nextHasNoMarginBottom label="Check in with one UPDATE … WHERE the day isn't in the list" checked={ atomic } onChange={ setAtomic } />
+      <CheckboxControl __nextHasNoMarginBottom label="Claim finished_at before rewarding" checked={ claim } onChange={ setClaim } />
+      <CheckboxControl __nextHasNoMarginBottom label="The points ledger has its unique key" checked={ ledger } onChange={ setLedger } />
+      <p className="fwp-muted">
+        Ada's row: days [{ db.row.days }], progress { db.row.progress }/{ challenge.target }, finished { db.row.finishedAt ? clockIn( db.row.finishedAt, tz ) : 'no' } · points { db.total } · celebrations { db.celebrations }
+      </p>
+      <ol className="fwp-log">{ log.map( ( line, i ) => <li key={ i }>{ line }</li> ) }</ol>
+    </div>
+  );
+};
+
+document.head.insertAdjacentHTML( 'beforeend', '<style>.fwp-log li{font-size:13px;margin-bottom:4px}.fwp-muted{color:#757575}</style>' ); // Added so this runs on its own
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <Demo /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>

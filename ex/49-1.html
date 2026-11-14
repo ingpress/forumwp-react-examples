@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>49.1: The map&#x27;s answer: circles from the server, guests who can&#x27;t search, and the mistake of sending every member&#x27;s point</title>
+<!-- ForumWP React course, 49.1: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 49.1
+// @title The map's answer: circles from the server, guests who can't search, and the mistake of sending every member's point
+// @section 49.2
+// @click Zoom in
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, CheckboxControl, SelectControl, TextControl } from '@wordpress/components'; // Added so this runs on its own
+
+// Added so this runs on its own: a pretend city list (GeoNames IDs and positions), a pretend
+// member_places table (user ID and city ID, nothing else), and a pretend GET /map and
+// GET /map/members, shortened from ForumWP Pro's Places and MapController.
+const CITIES = {
+  2332459: { name: 'Lagos', lat: 6.454, lng: 3.395 },
+  2339354: { name: 'Ibadan', lat: 7.378, lng: 3.906 },
+  2352778: { name: 'Abuja', lat: 9.058, lng: 7.489 },
+  2306104: { name: 'Accra', lat: 5.556, lng: -0.197 },
+  184745: { name: 'Nairobi', lat: -1.283, lng: 36.817 },
+  2643743: { name: 'London', lat: 51.509, lng: -0.126 },
+  2643123: { name: 'Manchester', lat: 53.481, lng: -2.237 },
+  5128581: { name: 'New York City', lat: 40.714, lng: -74.006 },
+};
+const NAMES = [ 'Ada', 'Tunde', 'Bola', 'Chidi', 'Ngozi', 'Kwame', 'Amara', 'Femi', 'Zainab', 'Emeka', 'Wanjiru', 'Tom', 'Priya', 'Sam' ];
+const ids = Object.keys( CITIES ).map( Number );
+// 60 members; the first 40 chose "Show me on the member map".
+const members = Array.from( { length: 60 }, ( _, i ) => ( { id: i + 1, name: i < NAMES.length ? NAMES[ i ] : `Member ${ i + 1 }` } ) );
+const places = new Map( members.slice( 0, 40 ).map( ( m, i ) => [ m.id, ids[ ( i * 7 ) % 11 % ids.length ] ] ) );
+places.set( 1, 2332459 ); // Ada Lovelace is in Lagos…
+members[ 0 ].name = 'Ada Lovelace';
+members[ 8 ].name = 'Zainab Bello'; // …and Zainab is the only member in Abuja.
+places.set( 9, 2352778 );
+[ ...places ].forEach( ( [ id, city ] ) => city === 2352778 && id !== 9 && places.set( id, 2332459 ) );
+
+// Places::cell(): which 80-pixel grid square a point falls in at a zoom (Web Mercator, 256-pixel tiles).
+const cell = ( lat, lng, zoom ) => {
+  const size = 256 * 2 ** zoom;
+  const rad = ( Math.max( -85.05, Math.min( 85.05, lat ) ) * Math.PI ) / 180;
+  const x = ( ( lng + 180 ) / 360 ) * size;
+  const y = ( ( 1 - Math.log( Math.tan( rad ) + 1 / Math.cos( rad ) ) / Math.PI ) / 2 ) * size;
+  return `${ Math.floor( x / 80 ) }:${ Math.floor( y / 80 ) }`;
+};
+
+// Places::clean_filters(): guests get the whole map only (the review's fix).
+const cleanFilters = ( search, viewer, fixed ) => ( { search: viewer || ! fixed ? search.trim() : '' } );
+
+// Places::counts(): members per city, filtered like the directory.
+const counts = ( filters ) => {
+  const out = {};
+  places.forEach( ( city, id ) => {
+    const m = members[ id - 1 ];
+    if ( filters.search && ! m.name.toLowerCase().startsWith( filters.search.toLowerCase() ) ) {
+      return;
+    }
+    out[ city ] = ( out[ city ] ?? 0 ) + 1;
+  } );
+  return out;
+};
+
+// GET /forumwp-pro/v1/map: one circle per grid square, never a member.
+const getMap = ( { viewer, search, zoom, fixed, mistake } ) => {
+  if ( ! viewer && ! mistake.guests ) {
+    return { status: 403, body: { code: 'forumwp_pro_map_closed', message: 'The member map is for members.' } };
+  }
+  const filters = cleanFilters( search, viewer, fixed );
+  if ( mistake.points ) {
+    // The mistake: every member's point, for the browser to cluster.
+    return { status: 200, body: { points: [ ...places ].map( ( [ userId, city ] ) => ( { userId, lat: CITIES[ city ].lat, lng: CITIES[ city ].lng } ) ) } };
+  }
+  const cells = {};
+  Object.entries( counts( filters ) ).forEach( ( [ id, n ] ) => {
+    const c = CITIES[ id ];
+    const key = cell( c.lat, c.lng, zoom );
+    cells[ key ] ??= { id: key, lat: 0, lng: 0, count: 0, cities: [] };
+    cells[ key ].lat += c.lat * n;
+    cells[ key ].lng += c.lng * n;
+    cells[ key ].count += n;
+    cells[ key ].cities.push( { id: Number( id ), name: c.name, count: n } );
+  } );
+  const clusters = Object.values( cells ).map( ( c ) => ( {
+    ...c,
+    lat: Math.round( ( c.lat / c.count ) * 1000 ) / 1000,
+    lng: Math.round( ( c.lng / c.count ) * 1000 ) / 1000,
+    cities: c.cities.sort( ( a, b ) => b.count - a.count ),
+  } ) );
+  return { status: 200, body: { clusters, shown: clusters.reduce( ( s, c ) => s + c.count, 0 ), members: members.length } };
+};
+
+// GET /forumwp-pro/v1/map/members: who is in a circle, for members only.
+const getMembers = ( { viewer, zoom, cellId } ) => {
+  if ( ! viewer ) {
+    return { status: 403, body: { code: 'forumwp_pro_map_closed', message: 'The member map is for members.' } };
+  }
+  const items = [ ...places ].filter( ( [ , city ] ) => cell( CITIES[ city ].lat, CITIES[ city ].lng, zoom ) === cellId ).map( ( [ id, city ] ) => ( { id, name: members[ id - 1 ].name, city: CITIES[ city ].name } ) );
+  return { status: 200, body: { items: items.slice( 0, 20 ), next_page: items.length > 20 ? 2 : null } };
+};
+
+// A flat drawing of the world, so no map tiles are loaded.
+const toXY = ( lat, lng ) => [ ( ( lng + 180 ) / 360 ) * 600, ( ( 90 - lat ) / 180 ) * 300 ];
+
+const Demo = () => {
+  const [ viewer, setViewer ] = useState( 1 );
+  const [ zoom, setZoom ] = useState( 2 );
+  const [ search, setSearch ] = useState( '' );
+  const [ fixed, setFixed ] = useState( true );
+  const [ points, setPoints ] = useState( false );
+  const [ open, setOpen ] = useState( null );
+  const request = { viewer, search, zoom, fixed, mistake: { points, guests: true } };
+  const map = getMap( request );
+  const list = open ? getMembers( { viewer, zoom, cellId: open } ) : null;
+  console.log( `GET /map?zoom=${ zoom }${ search ? `&search=${ search }` : '' } as ${ viewer ? 'Ada' : 'a guest' }:`, map.status, map.body );
+
+  return (
+    <div style={ { maxWidth: 820 } }>
+      <SelectControl __next40pxDefaultSize __nextHasNoMarginBottom label="Viewer" value={ String( viewer ) } options={ [ { label: 'Ada (a member)', value: '1' }, { label: 'A guest (the admin allows guests to see the map)', value: '0' } ] } onChange={ ( v ) => ( setViewer( Number( v ) ), setOpen( null ) ) } />
+      <TextControl __next40pxDefaultSize __nextHasNoMarginBottom label="Directory search (try Zainab)" value={ search } onChange={ setSearch } />
+      <CheckboxControl __nextHasNoMarginBottom label="Guests' searches are ignored (the review's fix)" checked={ fixed } onChange={ setFixed } />
+      <CheckboxControl __nextHasNoMarginBottom label="The mistake: send every member's point and cluster in the browser" checked={ points } onChange={ setPoints } />
+      <p>
+        Zoom { zoom }{ ' ' }
+        <Button variant="secondary" size="compact" disabled={ zoom >= 8 } onClick={ () => ( setZoom( zoom + 2 ), setOpen( null ) ) }>Zoom in</Button>{ ' ' }
+        <Button variant="secondary" size="compact" disabled={ zoom <= 2 } onClick={ () => ( setZoom( zoom - 2 ), setOpen( null ) ) }>Zoom out</Button>
+      </p>
+      <svg viewBox="0 0 600 300" style={ { width: '100%', background: '#dbe9f4', borderRadius: 8 } } role="img" aria-label="Member map">
+        { ( map.body.clusters ?? [] ).map( ( c ) => {
+          const [ x, y ] = toXY( c.lat, c.lng );
+          return (
+            <g key={ c.id } onClick={ () => setOpen( c.id ) } style={ { cursor: 'pointer' } }>
+              <circle cx={ x } cy={ y } r={ 8 + Math.sqrt( c.count ) * 2 } fill={ open === c.id ? '#1e1e1e' : '#3858e9' } opacity="0.85" />
+              <text x={ x } y={ y + 4 } textAnchor="middle" fontSize="11" fill="#fff">{ c.count }</text>
+            </g>
+          );
+        } ) }
+        { ( map.body.points ?? [] ).map( ( p ) => {
+          const [ x, y ] = toXY( p.lat, p.lng );
+          return <circle key={ p.userId } cx={ x + ( p.userId % 5 ) } cy={ y + ( p.userId % 3 ) } r="2" fill="#cc1818" />;
+        } ) }
+      </svg>
+      <p className="fwp-muted">{ map.status === 200 && map.body.shown !== undefined ? `${ map.body.shown } of ${ map.body.members } members show their city.` : '' } Click a circle to ask who is in it.</p>
+      { list && <pre className="fwp-json">{ `GET /map/members?zoom=${ zoom }&cell=${ open } → ${ list.status }\n${ JSON.stringify( list.body, null, 1 ).slice( 0, 600 ) }` }</pre> }
+      <pre className="fwp-json">{ `GET /map?zoom=${ zoom }${ search ? `&search=${ encodeURIComponent( search ) }` : '' } → ${ map.status }\n${ JSON.stringify( map.body, null, 1 ).slice( 0, 1400 ) }` }</pre>
+    </div>
+  );
+};
+
+document.head.insertAdjacentHTML( 'beforeend', '<style>.fwp-muted{color:#757575}.fwp-json{background:#f6f7f7;padding:8px;font-size:12px;max-height:260px;overflow:auto;white-space:pre-wrap}</style>' ); // Added so this runs on its own
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <Demo /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>

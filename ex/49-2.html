@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>49.2: Members like you: bounded candidates instead of every pair, and reasons checked again when read</title>
+<!-- ForumWP React course, 49.2: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 49.2
+// @title Members like you: bounded candidates instead of every pair, and reasons checked again when read
+// @section 49.6
+// @click Run tonight's job
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, CheckboxControl } from '@wordpress/components'; // Added so this runs on its own
+
+// Added so this runs on its own: a pretend community of 3,000 members, its spaces, who is in
+// each, who shows a city, and a pretend suggestions table. Shortened from ForumWP Pro's
+// Suggestions::rank(), for_member() and reasons().
+const N = 3000;
+const WEIGHTS = { space: 3, big: 1, city: 2 };
+const PER_SOURCE = 200;
+const spaces = {
+  1: { title: 'General', secret: false, members: new Set( Array.from( { length: N }, ( _, i ) => i + 1 ) ) },
+  12: { title: 'Product Builders', secret: false, members: new Set( [ 1, 2, ...Array.from( { length: 38 }, ( _, i ) => 100 + i ) ] ) },
+  31: { title: "Founders' Circle", secret: true, members: new Set( [ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 ] ) },
+  40: { title: 'Design', secret: false, members: new Set( Array.from( { length: 300 }, ( _, i ) => 500 + i ) ) },
+};
+const city = new Map( [ [ 1, 'Lagos' ], [ 2, 'Lagos' ], [ 120, 'Lagos' ] ] ); // member_places
+const NAMES = { 1: 'Ada', 2: 'Tunde', 3: 'Bola', 120: 'Chidi' };
+const nameOf = ( id ) => NAMES[ id ] ?? `Member ${ id }`;
+const stored = new Map(); // user_id => [ { other, score, reasons } ]
+let work = { pairs: 0, candidates: 0 };
+
+const memberships = ( id ) => Object.keys( spaces ).map( Number ).filter( ( s ) => spaces[ s ].members.has( id ) );
+const canView = ( spaceId, viewer ) => ! spaces[ spaceId ].secret || spaces[ spaceId ].members.has( viewer );
+
+// Suggestions::rank(), shortened: a few LIMITed lists of candidates, then scores.
+const rank = ( userId ) => {
+  const mine = memberships( userId ).sort( ( a, b ) => spaces[ a ].members.size - spaces[ b ].members.size );
+  const big = Math.max( 20, Math.ceil( N / 2 ) );
+  let candidates = [];
+  mine.forEach( ( s ) => ( candidates = candidates.concat( [ ...spaces[ s ].members ].filter( ( m ) => m !== userId ).slice( 0, PER_SOURCE ) ) ) );
+  if ( city.has( userId ) ) {
+    candidates = candidates.concat( [ ...city ].filter( ( [ m, c ] ) => m !== userId && c === city.get( userId ) ).map( ( [ m ] ) => m ).slice( 0, PER_SOURCE ) );
+  }
+  candidates = [ ...new Set( candidates ) ];
+  work.candidates += candidates.length;
+  const out = candidates.map( ( other ) => {
+    const reasons = [];
+    mine.forEach( ( s ) => {
+      if ( spaces[ s ].members.has( other ) ) {
+        const kind = spaces[ s ].members.size > big ? 'big' : 'space';
+        reasons.push( [ WEIGHTS[ kind ], `s:${ s }`, spaces[ s ].members.size ] );
+      }
+    } );
+    if ( city.has( userId ) && city.get( other ) === city.get( userId ) ) {
+      reasons.push( [ WEIGHTS.city, 'city', 0 ] );
+    }
+    reasons.sort( ( a, b ) => b[ 0 ] - a[ 0 ] || a[ 2 ] - b[ 2 ] );
+    return { other, score: reasons.reduce( ( s, r ) => s + r[ 0 ], 0 ), reasons: reasons.map( ( r ) => r[ 1 ] ) };
+  } );
+  return out.sort( ( a, b ) => b.score - a.score || b.other - a.other ).slice( 0, 20 );
+};
+
+// The nightly job: every active member, 200 at a time (here all at once).
+const nightly = () => {
+  work = { pairs: ( N * ( N - 1 ) ) / 2, candidates: 0 };
+  for ( let id = 1; id <= N; id++ ) {
+    stored.set( id, rank( id ) );
+  }
+};
+
+// Suggestions::reasons(): each stored code checked again, now, for this viewer.
+const reasons = ( viewer, other, keys, check ) =>
+  keys.flatMap( ( key ) => {
+    if ( key === 'city' ) {
+      return ! check || ( city.has( viewer ) && city.get( other ) === city.get( viewer ) ) ? [ `📍 ${ city.get( viewer ) ?? 'their city' }` ] : [];
+    }
+    const s = Number( key.slice( 2 ) );
+    const ok = spaces[ s ].members.has( viewer ) && spaces[ s ].members.has( other ) && canView( s, viewer );
+    return ! check || ok ? [ spaces[ s ].title ] : [];
+  } );
+
+const Card = ( { viewer, check } ) => {
+  const rows = ( stored.get( viewer ) ?? [] )
+    .map( ( row ) => ( { ...row, shown: reasons( viewer, row.other, row.reasons, check ) } ) )
+    .filter( ( row ) => row.shown.length );
+  return (
+    <div className="fwp-card">
+      <b>Members like you, for { nameOf( viewer ) }</b>
+      { ! stored.size && <p className="fwp-muted">Nothing yet: run tonight's job.</p> }
+      <ul>
+        { rows.slice( 0, 3 ).map( ( row ) => (
+          <li key={ row.other }>{ nameOf( row.other ) } <span className="fwp-muted">(score { row.score }, stored: { row.reasons.join( ',' ) })</span>: { row.shown.slice( 0, 2 ).join( ' · ' ) }</li>
+        ) ) }
+      </ul>
+    </div>
+  );
+};
+
+const Demo = () => {
+  const [ , redraw ] = useState( 0 );
+  const [ check, setCheck ] = useState( true );
+  const [ log, setLog ] = useState( [] );
+  const act = ( label, fn ) => {
+    fn();
+    console.log( label );
+    setLog( ( l ) => [ label, ...l ].slice( 0, 8 ) );
+    redraw( ( n ) => n + 1 );
+  };
+
+  return (
+    <div style={ { maxWidth: 820 } }>
+      <p>
+        <Button variant="primary" onClick={ () => act( "Tonight's job ran.", nightly ) }>Run tonight's job</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => act( "Tunde left Founders' Circle.", () => spaces[ 31 ].members.delete( 2 ) ) }>Tunde leaves Founders' Circle</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => act( 'Tunde chose "Don\'t show me": his row is deleted.', () => city.delete( 2 ) ) }>Tunde takes his city off the map</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => act( "An admin removed Bola from Founders' Circle (a secret space).", () => spaces[ 31 ].members.delete( 3 ) ) }>Bola is removed from Founders' Circle</Button>
+      </p>
+      <CheckboxControl __nextHasNoMarginBottom label="Check stored reasons again when read (the fix)" checked={ check } onChange={ setCheck } />
+      { work.pairs > 0 && (
+        <p className="fwp-muted">
+          Every pair would be { work.pairs.toLocaleString() } comparisons. The bounded job looked at { work.candidates.toLocaleString() } candidates in all ({ Math.round( work.candidates / N ) } per member).
+        </p>
+      ) }
+      <div className="fwp-grid">
+        <Card viewer={ 1 } check={ check } />
+        <Card viewer={ 3 } check={ check } />
+      </div>
+      <p className="fwp-muted">After the changes, turn the check off: Ada's card still names Tunde's old city, and Bola's card still names a secret space she can no longer see.</p>
+      <ol className="fwp-log">{ log.map( ( line, i ) => <li key={ i }>{ line }</li> ) }</ol>
+    </div>
+  );
+};
+
+document.head.insertAdjacentHTML( 'beforeend', '<style>.fwp-muted{color:#757575;font-size:13px}.fwp-card{border:1px solid #ddd;border-radius:8px;padding:12px}.fwp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}.fwp-log li{font-size:13px}</style>' ); // Added so this runs on its own
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <Demo /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>
