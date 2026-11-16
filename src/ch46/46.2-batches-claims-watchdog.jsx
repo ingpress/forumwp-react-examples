@@ -91,7 +91,7 @@ const runNext = () => {
   return `Job ${ job.id }: ${ said }`;
 };
 
-// Sender::watchdog(), once a day.
+// Sender::watchdog(), once an hour (once a day before ForumWP 0.36.1).
 const watchdog = () => ( db.broadcast.status === 'sending' && ! pending() ? ( next( 0 ), 'A sending broadcast had no job waiting: scheduled one.' ) : 'Nothing to do.' );
 
 const Demo = () => {
@@ -126,7 +126,7 @@ const Demo = () => {
           return `A: ${ batch( same ) } B: ${ batch( same ) }`;
         } ) }>Two batches at once</Button>{ ' ' }
         <Button variant="secondary" onClick={ () => act( 'Someone clears the jobs table', () => ( ( db.jobs = [] ), 'Every job is gone.' ) ) }>Clear the jobs table</Button>{ ' ' }
-        <Button variant="secondary" onClick={ () => act( 'Daily watchdog', watchdog ) }>Daily watchdog</Button>{ ' ' }
+        <Button variant="secondary" onClick={ () => act( 'Hourly watchdog', watchdog ) }>Hourly watchdog</Button>{ ' ' }
         <Button variant="tertiary" onClick={ () => { reset(); setLog( [] ); redraw( ( n ) => n + 1 ); } }>Start again</Button>
       </p>
       <p className="fwp-muted">
