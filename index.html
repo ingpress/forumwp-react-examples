@@ -79,7 +79,7 @@ footer { color: var(--muted); font-size: 13px; margin-top: 40px; }
   <header class="top">
     <span class="eyebrow">React + WordPress REST API, from Zero</span>
     <h1>ForumWP React Examples</h1>
-    <p class="lede">322 examples from the course, each a single HTML page that runs as it is. Press <b>Run</b>, or open one in a sandbox to change the code and see what happens.</p>
+    <p class="lede">325 examples from the course, each a single HTML page that runs as it is. Press <b>Run</b>, or open one in a sandbox to change the code and see what happens.</p>
     <ul class="how">
       <li><b>Run it anywhere</b>Each page loads React and WordPress's own components from a CDN and compiles the JSX in your browser. No install, no build.</li>
       <li><b>Look at the console</b>Console output also appears under the example. React's development warnings are on, so you see the same messages the book quotes.</li>
@@ -138,6 +138,7 @@ footer { color: var(--muted); font-size: 13px; margin-top: 40px; }
 <a href="#ch-48"><span>48</span>The importers in depth</a>
 <a href="#ch-49"><span>49</span>The member map and challenges</a>
 <a href="#ch-50"><span>50</span>Testing a running site: races, failures and the last fixes</a>
+<a href="#ch-51"><span>51</span>The full review: what fifteen reviewers found and how it was fixed</a>
     </nav>
     <main>
       <div class="search"><label class="eyebrow" for="filter">Find an example</label><input id="filter" type="search" placeholder="Type a number or a word, e.g. 8.3 or useEffect" autocomplete="off"></div>
@@ -3408,6 +3409,37 @@ footer { color: var(--muted); font-size: 13px; margin-top: 40px; }
     <button class="btn" data-open="jsfiddle" data-slug="50-3" data-title="Example 50.3: Sending a message once: no check, &quot;same text within 5 seconds&quot;, and a client id">JSFiddle</button>
     <button class="btn" data-open="codesandbox" data-slug="50-3" data-title="Example 50.3: Sending a message once: no check, &quot;same text within 5 seconds&quot;, and a client id">CodeSandbox</button>
     <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch50/50.3-idempotent-send.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li></ul></section>
+<section class="chapter" id="ch-51"><h2><span class="chnum">Chapter 51</span>The full review: what fifteen reviewers found and how it was fixed</h2><ul class="list"><li class="ex" id="ex-51-1">
+  <div class="ex-head"><span class="num">51.1</span><h3>A component made inside a filter loses its state</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/51-1.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="51-1" data-title="Example 51.1: A component made inside a filter loses its state">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="51-1" data-title="Example 51.1: A component made inside a filter loses its state">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="51-1" data-title="Example 51.1: A component made inside a filter loses its state">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch51/51.1-component-inside-a-filter.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li><li class="ex" id="ex-51-2">
+  <div class="ex-head"><span class="num">51.2</span><h3>An error boundary keeps the rest of the page</h3></div>
+  <div class="tags"><span class="tag tag-bug">shows an error on purpose</span></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/51-2.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="51-2" data-title="Example 51.2: An error boundary keeps the rest of the page">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="51-2" data-title="Example 51.2: An error boundary keeps the rest of the page">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="51-2" data-title="Example 51.2: An error boundary keeps the rest of the page">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch51/51.2-error-boundary.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li><li class="ex" id="ex-51-3">
+  <div class="ex-head"><span class="num">51.3</span><h3>Whose address is it? Reading X-Forwarded-For from the right</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/51-3.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="51-3" data-title="Example 51.3: Whose address is it? Reading X-Forwarded-For from the right">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="51-3" data-title="Example 51.3: Whose address is it? Reading X-Forwarded-For from the right">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="51-3" data-title="Example 51.3: Whose address is it? Reading X-Forwarded-For from the right">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch51/51.3-trusted-proxies.jsx" target="_blank" rel="noopener">Source</a>
   </div>
 </li></ul></section>
       <footer>Examples for the ForumWP React course by Collins Agbonghama. Code samples use React 18.3 and @wordpress/components 29 from esm.sh. Sandbox links send the example's code to that service.</footer>
