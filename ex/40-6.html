@@ -203,6 +203,7 @@ const Demo = () => {
         <Button variant="secondary" onClick={ () => say( `Mei, a community admin, tries her scheduled promotion 2 → ${ open( link( 2, 'mei' ), 'mei', version ) }` ) }>Mei tries promotion 2</Button>
       </p>
       <TextControl
+        __next40pxDefaultSize
         label="Edit the link and open it as Tunde (try adding &to=https://evil.example)"
         value={ tried || tundeLink }
         onChange={ setTried }

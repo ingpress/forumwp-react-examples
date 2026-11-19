@@ -55,12 +55,13 @@ const Demo = () => {
   return (
     <div style={ { maxWidth: 760 } }>
       <div className="fwp-row">
-        <SelectControl __nextHasNoMarginBottom label="The draft's author" value={ author } options={ people } onChange={ setAuthor } />
-        <SelectControl __nextHasNoMarginBottom label="Who presses Publish" value={ publisher } options={ people } onChange={ setPublisher } />
+        <SelectControl __next40pxDefaultSize __nextHasNoMarginBottom label="The draft's author" value={ author } options={ people } onChange={ setAuthor } />
+        <SelectControl __next40pxDefaultSize __nextHasNoMarginBottom label="Who presses Publish" value={ publisher } options={ people } onChange={ setPublisher } />
       </div>
       <div className="fwp-row">
         { Object.keys( PEOPLE ).map( ( id ) => (
           <SelectControl
+            __next40pxDefaultSize
             __nextHasNoMarginBottom
             key={ id }
             label={ `${ PEOPLE[ id ] }'s role now` }

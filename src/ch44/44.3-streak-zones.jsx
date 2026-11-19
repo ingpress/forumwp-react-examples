@@ -36,7 +36,7 @@ const Demo = () => {
     const firstRows = STREAKS.slice( 0, 5000 );
     const firstDue = firstRows.filter( ( r ) => localHourAndDate( r.timezone, time ).hour === hour ).length;
     const missed = STREAKS.slice( 5000 ).filter( ( r ) => localHourAndDate( r.timezone, time ).hour === hour ).length;
-    // Beta.30: work out the zones, then WHERE timezone IN (…) AND user_id > cursor LIMIT 500.
+    // Beta.30: work out the zones, then for each one WHERE timezone = … AND user_id > cursor LIMIT 500.
     const today = zonesAt( hour, time );
     const wanted = STREAKS.filter( ( r ) => r.timezone in today );
     const pages = Math.max( 1, Math.ceil( ( wanted.length + 1 ) / 500 ) );
@@ -51,7 +51,7 @@ const Demo = () => {
   };
   return (
     <div style={ { maxWidth: 760 } }>
-      <RangeControl __nextHasNoMarginBottom label="Reminder hour (streak_remind_hour)" min={ 0 } max={ 23 } value={ hour } onChange={ setHour } />
+      <RangeControl __next40pxDefaultSize __nextHasNoMarginBottom label="Reminder hour (streak_remind_hour)" min={ 0 } max={ 23 } value={ hour } onChange={ setHour } />
       <p><Button variant="primary" onClick={ run }>Run the hourly job</Button></p>
       { out && (
         <>

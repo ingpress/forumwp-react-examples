@@ -8,7 +8,7 @@ import { Button, RadioControl, RangeControl } from '@wordpress/components'; // A
 // Added so this runs on its own: MySQL's named locks, on a pretend clock in milliseconds.
 // Each lock remembers when it is free again; GET_LOCK( name, wait ) answers when it gets it,
 // or 0 once wait has run out.
-const COPY_MS = 1000; // copying 77 tables
+const COPY_MS = 1000; // copying about 90 tables
 const LOCKED_MS = 4; // the limits check and the site row
 const WORKERS = 10; // PHP workers on the web server
 const makeLocks = () => {
@@ -86,7 +86,7 @@ const Demo = () => {
         options={ [ { label: 'ForumWP Demo: 4 slots taken with GET_LOCK( slot, 0 ), a 4 ms network lock inside', value: 'slots' }, { label: 'The first version: one lock around the whole copy, waiting up to 20 s', value: 'one' } ] }
         onChange={ setMode }
       />
-      <RangeControl __nextHasNoMarginBottom label="Visitors pressing Start within a few milliseconds" min={ 1 } max={ 30 } value={ n } onChange={ setN } />
+      <RangeControl __next40pxDefaultSize __nextHasNoMarginBottom label="Visitors pressing Start within a few milliseconds" min={ 1 } max={ 30 } value={ n } onChange={ setN } />
       <p><Button variant="primary" onClick={ () => { const r = simulate( n, mode ); r.forEach( ( x ) => console.log( `Visitor ${ x.i + 1 }: ${ x.outcome }, answered at ${ ( x.done / 1000 ).toFixed( 2 ) } s` ) ); setRows( r ); } }>Visitors press Start</Button></p>
       { rows.length > 0 && (
         <>

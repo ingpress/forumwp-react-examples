@@ -149,7 +149,7 @@ const Demo = () => {
   };
   return (
     <div style={ { maxWidth: 760 } }>
-      <RangeControl __nextHasNoMarginBottom label="Conversations in Tunde's inbox" min={ 1 } max={ 30 } value={ n } onChange={ setN } />
+      <RangeControl __next40pxDefaultSize __nextHasNoMarginBottom label="Conversations in Tunde's inbox" min={ 1 } max={ 30 } value={ n } onChange={ setN } />
       <p><Button variant="primary" onClick={ run }>Build both ways</Button></p>
       <ul>{ out.map( ( l, i ) => <li key={ i }>{ l }</li> ) }</ul>
     </div>

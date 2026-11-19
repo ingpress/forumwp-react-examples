@@ -24,9 +24,20 @@ const error = ( code, message, status ) => ( { code, message, data: { status } }
 
 // Posts::count_drafts(): copies made by "Duplicate space…" left out.
 const countDrafts = ( user ) => db.posts.filter( ( p ) => p.user_id === user && p.status === 'draft' && ! p.meta.copied_from ).length;
-// Spam::limited() and Spam::record(): a transient per action and user, for an hour.
-const limited = ( action, user, limit ) => limit > 0 && ( db.hour[ `${ action }:${ user }` ] ?? 0 ) >= limit;
-const record = ( action, user ) => ( db.hour[ `${ action }:${ user }` ] = ( db.hour[ `${ action }:${ user }` ] ?? 0 ) + 1 );
+// Spam::allow_member(): counts one go at an action for a member this hour and says whether it
+// was still within the limit, in one step. Moderators are never limited (and not counted), and
+// a refused go isn't counted, so being refused doesn't make the wait longer.
+const allowMember = ( action, user, limit, isModerator ) => {
+  const key = `${ action }:${ user }`;
+  if ( isModerator || limit <= 0 ) {
+    return true;
+  }
+  if ( ( db.hour[ key ] ?? 0 ) + 1 > limit ) {
+    return false;
+  }
+  db.hour[ key ] = ( db.hour[ key ] ?? 0 ) + 1;
+  return true;
+};
 
 // PostsController::create(), the parts this example is about.
 const create = ( params, { user, isModerator, forum } ) => {
@@ -45,10 +56,9 @@ const create = ( params, { user, isModerator, forum } ) => {
     if ( countDrafts( user ) >= MAX_DRAFTS ) {
       return error( 'forumwp_too_many_drafts', sprintf( _n( 'You have %d draft. Publish or delete it before saving another.', 'You have %d drafts. Publish or delete some before saving another.', MAX_DRAFTS, 'forumwp' ), MAX_DRAFTS ), 400 );
     }
-    if ( ! isModerator && limited( 'draft', user, PER_HOUR ) ) {
+    if ( ! allowMember( 'draft', user, PER_HOUR, isModerator ) ) {
       return error( 'forumwp_rate_limited', 'You have saved a lot of drafts in the last hour. Please wait a while before saving another.', 429 );
     }
-    record( 'draft', user );
     delete data.publish_at; // a draft goes out when it is published
   }
   const post = { id: 1000 + db.posts.length, user_id: user, status: draft ? 'draft' : 'published', meta: {}, ...data };

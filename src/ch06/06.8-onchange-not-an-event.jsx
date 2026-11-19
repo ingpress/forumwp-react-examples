@@ -9,7 +9,7 @@ import { TextControl } from '@wordpress/components'; // Added so this runs on it
 const TitleField = () => {
   const [title, setTitle] = useState('');
   return (
-    <TextControl label="Title" value={title} onChange={(event) => setTitle(event.target.value)} />
+    <TextControl __next40pxDefaultSize __nextHasNoMarginBottom label="Title" value={title} onChange={(event) => setTitle(event.target.value)} />
   );
 };
 createRoot(document.getElementById('forumwp-root')).render(<TitleField />);
