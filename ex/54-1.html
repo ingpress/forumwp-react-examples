@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>54.1: Search filters kept in the address</title>
+<!-- ForumWP React course, 54.1: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 54.1
+// @title Search filters kept in the address
+// @section 54.3
+// @click Phone sheet
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, SelectControl } from '@wordpress/components'; // Added so this runs on its own
+import { QueryClient, QueryClientProvider, useQuery, keepPreviousData } from '@tanstack/react-query'; // Added so this runs on its own
+// In the course the app uses BrowserRouter; a memory router keeps the address inside the example so it runs anywhere.
+import { createMemoryRouter, RouterProvider, useSearchParams, useLocation } from 'react-router-dom'; // Added so this runs on its own
+
+// Added so this runs on its own: a pretend GET /search with a few posts, answering after 300 ms.
+const DAY = 24 * 60 * 60 * 1000;
+const POSTS = [
+  { id: 1, title: 'Compost in winter', space: 'garden-club', by: 'ada', days: 2 },
+  { id: 2, title: 'Hot compost or cold?', space: 'garden-club', by: 'tunde', days: 20 },
+  { id: 3, title: 'Compost bins: what worked', space: 'garden-club', by: 'ada', days: 200 },
+  { id: 4, title: 'Coffee grounds as compost', space: 'cafe', by: 'tunde', days: 5 },
+  { id: 5, title: 'Compost workshop (event)', space: 'cafe', by: 'leo', days: 1, event: true },
+];
+const SPACES = { 'garden-club': 'Garden Club', cafe: 'The Café' };
+const WHEN = { week: 7, month: 30, year: 365 };
+const get = ( path, query ) => new Promise( ( resolve ) => setTimeout( () => {
+  console.log( 'GET', path + '?' + new URLSearchParams( query ) );
+  const posts = POSTS.filter( ( p ) =>
+    p.title.toLowerCase().includes( query.q.toLowerCase() ) &&
+    ( ! query.type || ( query.type === 'events' ) === !! p.event ) &&
+    ( ! query.in || p.space === query.in ) &&
+    ( ! query.by || p.by === query.by ) &&
+    ( ! query.when || p.days <= WHEN[ query.when ] )
+  );
+  resolve( { posts, filters: { space: query.in ? { title: SPACES[ query.in ] } : null } } );
+}, 300 ) );
+
+// From ForumWP's app/portal/api/misc.js.
+export const useSearch = ( q, filters = {} ) => {
+  const chosen = Object.fromEntries(
+    Object.entries( filters ).filter( ( [ , value ] ) => value )
+  );
+
+  return useQuery( {
+    queryKey: [ 'search', q, chosen ],
+    queryFn: () => get( '/search', { q, ...chosen } ),
+    enabled: q.trim().length >= 2,
+    // Changing a filter keeps the results on screen until the new ones arrive.
+    placeholderData: keepPreviousData,
+  } );
+};
+
+// From ForumWP's app/portal/components/SearchFilters.js.
+// The filters nobody chose: the page's address leaves them out.
+export const NO_FILTERS = { type: 'all', in: '', by: '', when: '' };
+
+// The filters as the server takes them: Type "all" is the same as none.
+const asQuery = ( values ) => ( {
+  ...values,
+  type: values.type === 'all' ? '' : values.type,
+} );
+
+// Added so this runs on its own: in ForumWP `change()` reads window.location.search. Here the
+// address lives in a memory router, so its own (always current) location is read instead.
+let router;
+const addressNow = () => router.state.location.search;
+
+const Search = () => {
+  const [ params, setParams ] = useSearchParams();
+  const q = params.get( 'q' ) ?? '';
+  // The filters live in the page's address, so Back, reload and a shared link keep them.
+  const values = {
+    type: params.get( 'type' ) || 'all',
+    in: params.get( 'in' ) ?? '',
+    by: params.get( 'by' ) ?? '',
+    when: params.get( 'when' ) ?? '',
+  };
+  const { data, isPending, isPlaceholderData } = useSearch(
+    q,
+    asQuery( values )
+  );
+
+  const change = ( changes, push = false ) => {
+    // From the address as it is this instant, so changes made together all stay.
+    const next = new URLSearchParams( addressNow() );
+    Object.entries( changes ).forEach( ( [ key, value ] ) => {
+      if ( ! value || value === NO_FILTERS[ key ] ) {
+        next.delete( key );
+      } else {
+        next.set( key, value );
+      }
+    } );
+    setParams( next, { replace: ! push } );
+  };
+
+  // Added so this runs on its own: plain fields in place of SearchFilters.js's FilterFields and chips.
+  return (
+    <div>
+      <h2 style={ { margin: '8px 0' } }>Results for “{ q }”</h2>
+      <div style={ { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 } }>
+        <SelectControl __next40pxDefaultSize __nextHasNoMarginBottom label="Type" value={ values.type }
+          options={ [ { value: 'all', label: 'Everything' }, { value: 'posts', label: 'Posts' }, { value: 'events', label: 'Events' } ] }
+          onChange={ ( type ) => change( { type } ) } />
+        <SelectControl __next40pxDefaultSize __nextHasNoMarginBottom label="Space" value={ values.in }
+          options={ [ { value: '', label: 'Any space' }, ...Object.entries( SPACES ).map( ( [ value, label ] ) => ( { value, label } ) ) ] }
+          onChange={ ( v ) => change( { in: v } ) } />
+        <SelectControl __next40pxDefaultSize __nextHasNoMarginBottom label="By" value={ values.by }
+          options={ [ { value: '', label: 'Anyone' }, { value: 'ada', label: 'Ada' }, { value: 'tunde', label: 'Tunde' }, { value: 'leo', label: 'Leo' } ] }
+          onChange={ ( by ) => change( { by } ) } />
+        <SelectControl __next40pxDefaultSize __nextHasNoMarginBottom label="When" value={ values.when }
+          options={ [ { value: '', label: 'Any time' }, { value: 'week', label: 'Past week' }, { value: 'month', label: 'Past month' }, { value: 'year', label: 'Past year' } ] }
+          onChange={ ( when ) => change( { when } ) } />
+      </div>
+      <p style={ { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } }>
+        <Button variant="secondary" size="compact" onClick={ () => change( { type: 'events', when: 'year' }, true ) }>
+          Phone sheet: Events, past year (adds a step)
+        </Button>
+        <Button variant="tertiary" size="compact" onClick={ () => change( NO_FILTERS ) }>Clear all</Button>
+      </p>
+      { isPending ? <p>Searching…</p> : (
+        <ul style={ { opacity: isPlaceholderData ? 0.5 : 1 } }>
+          { data.posts.length === 0 && <li>No matches.</li> }
+          { data.posts.map( ( p ) => (
+            <li key={ p.id }>{ p.title } <small>({ SPACES[ p.space ] }, by { p.by }, { p.days === 1 ? 'yesterday' : `${ p.days } days ago` })</small></li>
+          ) ) }
+        </ul>
+      ) }
+    </div>
+  );
+};
+
+// Added so this runs on its own: an address bar with Back, Forward and Reload. "Reload" forgets
+// everything React and TanStack Query remembered and draws the screen again from the address alone.
+let queryClient = new QueryClient();
+const Page = () => {
+  const location = useLocation();
+  const [ load, setLoad ] = useState( 1 );
+
+  return (
+    <div>
+      <div className="fwp-card" style={ { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } }>
+        <Button variant="secondary" size="compact" onClick={ () => router.navigate( -1 ) }>Back</Button>
+        <Button variant="secondary" size="compact" onClick={ () => router.navigate( 1 ) }>Forward</Button>
+        <Button variant="secondary" size="compact" onClick={ () => { queryClient = new QueryClient(); setLoad( load + 1 ); console.log( '(reload)' ); } }>Reload</Button>
+        <code style={ { wordBreak: 'break-all' } }>{ location.pathname + location.search }</code>
+      </div>
+      <QueryClientProvider client={ queryClient } key={ load }>
+        <Search />
+      </QueryClientProvider>
+    </div>
+  );
+};
+
+router = createMemoryRouter(
+  [ { path: '/community/search', element: <Page /> }, { path: '*', element: <p>The screen before the search. <Button variant="secondary" size="compact" onClick={ () => router.navigate( 1 ) }>Forward</Button></p> } ],
+  { initialEntries: [ '/community/', '/community/search?q=compost' ], initialIndex: 1 }
+);
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <RouterProvider router={ router } /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>
