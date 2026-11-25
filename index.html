@@ -79,7 +79,7 @@ footer { color: var(--muted); font-size: 13px; margin-top: 40px; }
   <header class="top">
     <span class="eyebrow">React + WordPress REST API, from Zero</span>
     <h1>ForumWP React Examples</h1>
-    <p class="lede">325 examples from the course, each a single HTML page that runs as it is. Press <b>Run</b>, or open one in a sandbox to change the code and see what happens.</p>
+    <p class="lede">331 examples from the course, each a single HTML page that runs as it is. Press <b>Run</b>, or open one in a sandbox to change the code and see what happens.</p>
     <ul class="how">
       <li><b>Run it anywhere</b>Each page loads React and WordPress's own components from a CDN and compiles the JSX in your browser. No install, no build.</li>
       <li><b>Look at the console</b>Console output also appears under the example. React's development warnings are on, so you see the same messages the book quotes.</li>
@@ -139,6 +139,7 @@ footer { color: var(--muted); font-size: 13px; margin-top: 40px; }
 <a href="#ch-49"><span>49</span>The member map and challenges</a>
 <a href="#ch-50"><span>50</span>Testing a running site: races, failures and the last fixes</a>
 <a href="#ch-51"><span>51</span>The full review: what fifteen reviewers found and how it was fixed</a>
+<a href="#ch-52"><span>52</span>The re-checks: what fixing breaks</a>
     </nav>
     <main>
       <div class="search"><label class="eyebrow" for="filter">Find an example</label><input id="filter" type="search" placeholder="Type a number or a word, e.g. 8.3 or useEffect" autocomplete="off"></div>
@@ -3440,6 +3441,67 @@ footer { color: var(--muted); font-size: 13px; margin-top: 40px; }
     <button class="btn" data-open="jsfiddle" data-slug="51-3" data-title="Example 51.3: Whose address is it? Reading X-Forwarded-For from the right">JSFiddle</button>
     <button class="btn" data-open="codesandbox" data-slug="51-3" data-title="Example 51.3: Whose address is it? Reading X-Forwarded-For from the right">CodeSandbox</button>
     <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch51/51.3-trusted-proxies.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li></ul></section>
+<section class="chapter" id="ch-52"><h2><span class="chnum">Chapter 52</span>The re-checks: what fixing breaks</h2><ul class="list"><li class="ex" id="ex-52-1">
+  <div class="ex-head"><span class="num">52.1</span><h3>Polling that survives an error</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/52-1.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="52-1" data-title="Example 52.1: Polling that survives an error">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="52-1" data-title="Example 52.1: Polling that survives an error">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="52-1" data-title="Example 52.1: Polling that survives an error">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch52/52.1-polling-survives-an-error.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li><li class="ex" id="ex-52-2">
+  <div class="ex-head"><span class="num">52.2</span><h3>Reload only after &quot;Try again&quot; fails</h3></div>
+  <div class="tags"><span class="tag tag-bug">shows an error on purpose</span></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/52-2.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="52-2" data-title="Example 52.2: Reload only after &quot;Try again&quot; fails">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="52-2" data-title="Example 52.2: Reload only after &quot;Try again&quot; fails">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="52-2" data-title="Example 52.2: Reload only after &quot;Try again&quot; fails">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch52/52.2-reload-only-after-try-again.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li><li class="ex" id="ex-52-3">
+  <div class="ex-head"><span class="num">52.3</span><h3>Two dirty forms: remember-and-restore against a count</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/52-3.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="52-3" data-title="Example 52.3: Two dirty forms: remember-and-restore against a count">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="52-3" data-title="Example 52.3: Two dirty forms: remember-and-restore against a count">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="52-3" data-title="Example 52.3: Two dirty forms: remember-and-restore against a count">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch52/52.3-count-of-dirty-forms.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li><li class="ex" id="ex-52-4">
+  <div class="ex-head"><span class="num">52.4</span><h3>A long feed that draws only what is near the screen</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/52-4.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="52-4" data-title="Example 52.4: A long feed that draws only what is near the screen">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="52-4" data-title="Example 52.4: A long feed that draws only what is near the screen">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="52-4" data-title="Example 52.4: A long feed that draws only what is near the screen">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch52/52.4-windowed-feed.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li><li class="ex" id="ex-52-5">
+  <div class="ex-head"><span class="num">52.5</span><h3>An autosave that makes two drafts, and the one-word fix</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/52-5.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="52-5" data-title="Example 52.5: An autosave that makes two drafts, and the one-word fix">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="52-5" data-title="Example 52.5: An autosave that makes two drafts, and the one-word fix">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="52-5" data-title="Example 52.5: An autosave that makes two drafts, and the one-word fix">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch52/52.5-autosave-two-drafts.jsx" target="_blank" rel="noopener">Source</a>
+  </div>
+</li><li class="ex" id="ex-52-6">
+  <div class="ex-head"><span class="num">52.6</span><h3>An upload that tries once more with a fresh token</h3></div>
+  <div class="tags"></div>
+  <div class="actions">
+    <a class="btn primary" href="ex/52-6.html" target="_blank" rel="noopener">Run</a>
+    <button class="btn" data-open="codepen" data-slug="52-6" data-title="Example 52.6: An upload that tries once more with a fresh token">CodePen</button>
+    <button class="btn" data-open="jsfiddle" data-slug="52-6" data-title="Example 52.6: An upload that tries once more with a fresh token">JSFiddle</button>
+    <button class="btn" data-open="codesandbox" data-slug="52-6" data-title="Example 52.6: An upload that tries once more with a fresh token">CodeSandbox</button>
+    <a class="btn ghost" href="https://github.com/ingpress/forumwp-react-examples/blob/main/src/ch52/52.6-upload-retry-fresh-token.jsx" target="_blank" rel="noopener">Source</a>
   </div>
 </li></ul></section>
       <footer>Examples for the ForumWP React course by Collins Agbonghama. Code samples use React 18.3 and @wordpress/components 29 from esm.sh. Sandbox links send the example's code to that service.</footer>

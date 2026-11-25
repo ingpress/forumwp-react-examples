@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>52.3: Two dirty forms: remember-and-restore against a count</title>
+<!-- ForumWP React course, 52.3: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 52.3
+// @title Two dirty forms: remember-and-restore against a count
+// @section 52.4
+// @click Type in form A
+import { createRoot, useEffect, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, RadioControl } from '@wordpress/components'; // Added so this runs on its own
+
+// Added so this runs on its own: a pretend router. Every link in the app ends in push().
+const log = [];
+let tell = () => {};
+const say = ( line ) => {
+  log.push( line );
+  console.log( line );
+  tell();
+};
+const navigator = {
+  push( to ) {
+    say( `Went to ${ to }` );
+  },
+};
+const originalPush = navigator.push;
+// Added so this runs on its own: window.confirm() would stop the example, so "asking" is logged.
+const ask = () => {
+  say( 'ASKED: "You have unsaved changes. Leave without saving them?"' );
+
+  return true;
+};
+
+// The first version (the bug): each dirty form wraps push() itself, and puts back what it found.
+const useGuardFirst = ( dirty ) => {
+  useEffect( () => {
+    if ( ! dirty ) {
+      return;
+    }
+    const { push } = navigator;
+    navigator.push = ( to, ...rest ) => {
+      if ( ask() ) {
+        push.call( navigator, to, ...rest );
+      }
+    };
+
+    return () => {
+      navigator.push = push;
+    };
+  }, [ dirty ] );
+};
+
+// As shipped (app/portal/hooks/useUnsavedGuard.js): one patch, and a count.
+// How many forms on the screen have unsaved work right now, and what undoes watch().
+let dirtyGuards = 0;
+let unwatch = null;
+
+const watch = () => {
+  const { push } = navigator;
+  navigator.push = ( to, ...rest ) => {
+    if ( ask() ) {
+      push.call( navigator, to, ...rest );
+    }
+  };
+
+  return () => {
+    navigator.push = push;
+  };
+};
+
+const useGuardCounted = ( dirty ) => {
+  useEffect( () => {
+    if ( ! dirty ) {
+      return;
+    }
+    // The first dirty form starts the watch; the last one to be saved ends it.
+    dirtyGuards++;
+    if ( dirtyGuards === 1 ) {
+      unwatch = watch();
+    }
+
+    return () => {
+      dirtyGuards--;
+      if ( dirtyGuards === 0 ) {
+        unwatch();
+        unwatch = null;
+      }
+    };
+  }, [ dirty ] );
+};
+
+const Form = ( { name, useGuard } ) => {
+  const [ dirty, setDirty ] = useState( false );
+  useGuard( dirty );
+  // Added so this runs on its own: redraw the page's "push() is …" line after the guard has run.
+  useEffect( () => tell(), [ dirty ] );
+
+  return (
+    <div className="fwp-card">
+      <strong>Form { name }</strong>: { dirty ? 'unsaved changes' : 'saved' }{ ' ' }
+      <Button variant="secondary" disabled={ dirty } onClick={ () => setDirty( true ) }>Type in form { name }</Button>{ ' ' }
+      <Button variant="secondary" disabled={ ! dirty } onClick={ () => setDirty( false ) }>Save form { name }</Button>
+    </div>
+  );
+};
+
+const App = () => {
+  const [ version, setVersion ] = useState( 'first' );
+  const [ , redraw ] = useState( 0 );
+  tell = () => redraw( ( n ) => n + 1 );
+  const useGuard = version === 'first' ? useGuardFirst : useGuardCounted;
+  // Added so this runs on its own: start clean when the version changes (this runs
+  // after the old forms' clean-ups).
+  useEffect( () => {
+    navigator.push = originalPush;
+    dirtyGuards = 0;
+    unwatch = null;
+    log.length = 0;
+    tell();
+  }, [ version ] );
+
+  return (
+    <div style={ { maxWidth: 640 } }>
+      <RadioControl
+        label="The guard"
+        selected={ version }
+        options={ [
+          { label: 'First version: each form wraps push() and restores what it found (the bug)', value: 'first' },
+          { label: 'As shipped: one patch and a count of dirty forms', value: 'counted' },
+        ] }
+        onChange={ setVersion }
+      />
+      { /* key: new forms (and a new hook) when the version changes. */ }
+      <div key={ version }>
+        <Form name="A" useGuard={ useGuard } />
+        <Form name="B" useGuard={ useGuard } />
+      </div>
+      <p>
+        <Button variant="primary" onClick={ () => navigator.push( '/members' ) }>Follow a link to Members</Button>{ ' ' }
+        push() is { navigator.push === originalPush ? 'the router’s own' : 'wrapped' }.
+      </p>
+      <ol className="fwp-log">{ log.map( ( line, i ) => <li key={ i }>{ line }</li> ) }</ol>
+      <p className="fwp-muted">Try, with the first version: type in A, type in B, save A, then save B. Both forms are saved, but push() is still wrapped: follow the link and you are asked about changes that don't exist, for ever. (After "save A" alone, B's changes weren't protected at all.) Do the same with the shipped version: the question comes while either form is dirty and stops when both are saved.</p>
+    </div>
+  );
+};
+
+document.head.insertAdjacentHTML( 'beforeend', '<style>.fwp-card{border:1px solid #ddd;border-radius:8px;padding:12px;margin:12px 0}.fwp-muted{color:#757575}.fwp-log{font-family:monospace;font-size:13px}</style>' ); // Added so this runs on its own
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <App /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>

@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>52.5: An autosave that makes two drafts, and the one-word fix</title>
+<!-- ForumWP React course, 52.5: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 52.5
+// @title An autosave that makes two drafts, and the one-word fix
+// @section 52.7
+// @click Type during the first save
+import { createRoot, startTransition, useEffect, useRef, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, CheckboxControl, TextControl } from '@wordpress/components'; // Added so this runs on its own
+
+// Added so this runs on its own: a pretend server that takes 1.5 seconds to save.
+// id 0 means "make a new broadcast"; any other id updates that one.
+const drafts = [];
+let tell = () => {};
+const saveBroadcast = ( { id, subject } ) => new Promise( ( resolve ) => setTimeout( () => {
+  let draft = drafts.find( ( d ) => d.id === id );
+  if ( draft ) {
+    draft.subject = subject;
+    console.log( `POST /broadcasts/${ id } → updated` );
+  } else {
+    draft = { id: 57 + drafts.length, subject };
+    drafts.push( draft );
+    console.log( `POST /broadcasts (id 0) → made broadcast ${ draft.id }` );
+  }
+  tell();
+  resolve( { ...draft } );
+}, 1500 ) );
+
+// The real editor waits 4 seconds; shorter here so you don't.
+const AUTOSAVE_AFTER = 1000;
+
+// The broadcast editor's autosave, shortened (app/portal/broadcasts/Editor.js).
+// `id` comes from the address: /broadcasts/new is 0, /broadcasts/57 is 57.
+const Editor = ( { id, navigate, fixed } ) => {
+  const [ subject, setSubject ] = useState( '' );
+  const [ savedSubject, setSavedSubject ] = useState( '' );
+  const [ isPending, setPending ] = useState( false );
+  const dirty = subject !== savedSubject;
+
+  const persist = () => {
+    const sending = subject;
+    setPending( true );
+    saveBroadcast( { id, subject } ).then( ( saved ) => {
+      setPending( false );
+      // Saved is what was sent, not what the form holds by now.
+      setSavedSubject( sending );
+      if ( ! id ) {
+        navigate( saved.id );
+      }
+    } );
+  };
+
+  const text = subject;
+  const autosaves = dirty && !! subject.trim() && ! isPending;
+  useEffect( () => {
+    if ( ! autosaves ) {
+      return;
+    }
+    const timer = window.setTimeout( () => persist(), AUTOSAVE_AFTER );
+
+    return () => window.clearTimeout( timer );
+    // `id` is here so that the timer starts again when a new broadcast gets its id:
+    // a timer started before that would still save "a new broadcast" (id 0), and
+    // make a second draft.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, fixed ? [ autosaves, text, id ] : [ autosaves, text ] );
+
+  // Added so this runs on its own: types for you, at the moments that matter.
+  const script = useRef( [] );
+  const play = () => {
+    script.current.forEach( clearTimeout );
+    setSubject( 'Welcome' );
+    // The first autosave starts at 1 second and is answered at 2.5: type in between.
+    script.current = [ setTimeout( () => setSubject( 'Welcome to March' ), 1800 ) ];
+  };
+
+  return (
+    <div style={ { display: 'grid', gap: 8 } }>
+      <p style={ { margin: 0 } }>Address: <code>/broadcasts/{ id || 'new' }</code> { isPending ? '· saving…' : dirty ? '· unsaved' : '· saved' }</p>
+      <TextControl __nextHasNoMarginBottom label="Subject" value={ subject } onChange={ setSubject } />
+      <div><Button variant="primary" onClick={ play }>Type during the first save</Button></div>
+    </div>
+  );
+};
+
+const App = () => {
+  const [ fixed, setFixed ] = useState( false );
+  const [ id, setId ] = useState( 0 );
+  const [ run, setRun ] = useState( 0 );
+  const [ , redraw ] = useState( 0 );
+  tell = () => redraw( ( n ) => n + 1 );
+
+  return (
+    <div style={ { maxWidth: 560, display: 'grid', gap: 12 } }>
+      <CheckboxControl
+        label="`id` is in the effect's dependency array (the fix)"
+        checked={ fixed }
+        onChange={ ( value ) => {
+          // Added so this runs on its own: start again with a new broadcast.
+          drafts.length = 0;
+          setId( 0 );
+          setRun( run + 1 );
+          setFixed( value );
+        } }
+      />
+      <Editor
+        key={ run }
+        id={ id }
+        // Added so this runs on its own: like React Router, the new address is applied
+        // in a transition, so it arrives one render after the save's own state.
+        navigate={ ( to ) => startTransition( () => setId( to ) ) }
+        fixed={ fixed }
+      />
+      <div>
+        <strong>Drafts on the server: { drafts.length }</strong>
+        <ul>{ drafts.map( ( d ) => <li key={ d.id }>Broadcast { d.id }: "{ d.subject }"</li> ) }</ul>
+      </div>
+      <p style={ { color: '#757575' } }>Try: press the button with the box unticked and wait five seconds. The first save makes broadcast 57; the words typed while it was on its way are saved by a timer that still believes the broadcast is new, and make broadcast 58. Tick the box and press it again: one draft, updated.</p>
+    </div>
+  );
+};
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <App /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>

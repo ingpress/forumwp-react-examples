@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>52.1: Polling that survives an error</title>
+<!-- ForumWP React course, 52.1: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 52.1
+// @title Polling that survives an error
+// @section 52.2
+// @click Drop the connection
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, Notice, RadioControl } from '@wordpress/components'; // Added so this runs on its own
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query'; // Added so this runs on its own
+
+// Added so this runs on its own: a pretend server. Tunde writes every 2 seconds. The
+// "connection" can be dropped for a few seconds, and Ada can be thrown out of the room (403).
+const rows = [ { id: 1, author: 'Tunde', body: 'Hi all, starting in a minute.' } ];
+let nextId = 2;
+setInterval( () => rows.push( { id: nextId, author: 'Tunde', body: `Tunde's message ${ nextId++ }` } ), 2000 );
+const net = { down: false, refused: false };
+const proGet = ( path ) => new Promise( ( resolve, reject ) => setTimeout( () => {
+  if ( net.down ) {
+    console.log( 'GET', path, '→ failed (no connection)' );
+    reject( { message: 'You seem to be offline.' } );
+  } else if ( net.refused ) {
+    console.log( 'GET', path, '→ 403' );
+    reject( { message: 'You can no longer read this chat.', data: { status: 403 } } );
+  } else {
+    const after = Number( new URLSearchParams( path.split( '?' )[ 1 ] ).get( 'after' ) );
+    const items = rows.filter( ( r ) => r.id > after );
+    console.log( 'GET', path, '→', items.length, 'new' );
+    resolve( { items, isOpen: true } );
+  }
+}, 150 ) );
+
+// From ForumWP Pro's app/portal/live/Chat.js. (The real numbers are 4000 and 12000:
+// shorter here so you don't wait.)
+const POLL = 1000;
+const POLL_AFTER_ERROR = 3000;
+// Answers that will not change by asking again: not signed in, not allowed, gone.
+const REFUSED = [ 401, 403, 404 ];
+
+const useChat = ( postId, live, version ) => {
+  const queryClient = useQueryClient();
+  const key = [ 'live-chat', postId, version ];
+
+  return useQuery( {
+    queryKey: key,
+    queryFn: async () => {
+      const before = queryClient.getQueryData( key )?.items ?? [];
+      const after = before.length ? before[ before.length - 1 ].id : 0;
+      const data = await proGet( `/live/${ postId }/chat?after=${ after }` );
+
+      return { ...data, items: [ ...before, ...data.items ].slice( -6 ) };
+    },
+    refetchInterval:
+      version === 'first'
+        ? // The first version (the bug): any error stops the polling for good.
+          ( query ) =>
+            live && query.state.data?.isOpen !== false && ! query.state.error
+              ? POLL
+              : false
+        : ( query ) => {
+            const { data, error } = query.state;
+            if ( ! live || data?.isOpen === false ) {
+              return false;
+            }
+            if ( ! error ) {
+              return POLL;
+            }
+
+            return REFUSED.includes( error.data?.status )
+              ? false
+              : POLL_AFTER_ERROR;
+          },
+    staleTime: 0,
+    retry: false,
+  } );
+};
+
+const Chat = ( { version } ) => {
+  const chat = useChat( 42, true, version );
+
+  return (
+    <div style={ { display: 'grid', gap: 8 } }>
+      <ol style={ { margin: 0, paddingLeft: 20, minHeight: 130 } }>
+        { ( chat.data?.items ?? [] ).map( ( m ) => (
+          <li key={ m.id } value={ m.id }><strong>{ m.author }</strong>: { m.body }</li>
+        ) ) }
+      </ol>
+      { chat.error && (
+        <Notice status="error" isDismissible={ false }>{ chat.error.message }</Notice>
+      ) }
+    </div>
+  );
+};
+
+const App = () => {
+  const [ version, setVersion ] = useState( 'first' );
+  const [ down, setDown ] = useState( false );
+
+  return (
+    <div style={ { maxWidth: 520, display: 'grid', gap: 12 } }>
+      <RadioControl
+        label="refetchInterval"
+        selected={ version }
+        options={ [
+          { label: 'The first version: stop on any error (the bug)', value: 'first' },
+          { label: 'As shipped: stop when refused, otherwise try again more slowly', value: 'shipped' },
+        ] }
+        onChange={ setVersion }
+      />
+      <div style={ { display: 'flex', gap: 8 } }>
+        <Button
+          variant="primary"
+          disabled={ down }
+          onClick={ () => {
+            net.down = true;
+            setDown( true );
+            setTimeout( () => {
+              net.down = false;
+              setDown( false );
+            }, 2500 );
+          } }
+        >
+          { down ? 'No connection…' : 'Drop the connection for 2.5 seconds' }
+        </Button>
+        <Button variant="secondary" onClick={ () => ( net.refused = true ) }>Throw Ada out (403)</Button>
+      </div>
+      <Chat key={ version } version={ version } />
+      <p style={ { color: '#757575' } }>Try: drop the connection with the first version. The error stays and Tunde's messages never come back. Choose "As shipped" and drop it again: after three seconds the chat asks again and catches up. Then throw Ada out: both versions stop asking, as they should. The console lists every request.</p>
+    </div>
+  );
+};
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render(
+  <QueryClientProvider client={ new QueryClient() }>
+    <App />
+  </QueryClientProvider>
+);
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>
