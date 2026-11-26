@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>55.1: Check then send, or one conditional write</title>
+<!-- ForumWP React course, 55.1: runs as it is in JSFiddle, CodePen or straight from your computer. -->
+<link rel="stylesheet" href="https://unpkg.com/@wordpress/components@29.12.0/build-style/style.css">
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1e1e1e; }
+  .fwp-space-card, .fwp-post, .fwp-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 0 0 12px; }
+  .fwp-badge { background: #eef; border-radius: 4px; padding: 0 6px; font-size: 12px; margin-left: 6px; }
+  .fwp-avatar { border-radius: 50%; vertical-align: middle; }
+  #console { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; color: #333; }
+  #console:empty { display: none; }
+  #console .error { color: #b32d2e; }
+  #console .warn { color: #8a6100; }
+</style>
+<script>
+  // Shows console output on the page too (the course often asks you to look at it).
+  (() => {
+    const show = (type, args) => {
+      const box = document.getElementById('console');
+      if (!box) return;
+      // Fill in %s / %d / %o placeholders and drop %c styling, as the browser console does.
+      if (typeof args[0] === 'string' && /%[sdioOc]/.test(args[0])) {
+        let rest = args.slice(1);
+        const first = args[0].replace(/%([sdioOc])/g, (m, t) => {
+          if (!rest.length) return '';
+          const v = rest.shift();
+          return t === 'c' ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        });
+        args = [first, ...rest];
+      }
+      if (typeof args[0] === 'string' && args[0].startsWith('Download the React DevTools')) return;
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = args.map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      box.appendChild(line);
+    };
+    for (const type of ['log', 'info', 'warn', 'error']) {
+      const original = console[type].bind(console);
+      console[type] = (...args) => { original(...args); show(type, args); };
+    }
+    window.addEventListener('error', (e) => show('error', ['Uncaught ' + (e.error ? e.error.name + ': ' + e.error.message : e.message)]));
+    window.addEventListener('unhandledrejection', (e) => show('error', ['Uncaught (in promise) ' + (e.reason && e.reason.message ? e.reason.message : e.reason)]));
+  })();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1?dev",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev&external=react",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?dev&external=react",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?dev&external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev&external=react,react-dom",
+    "@wordpress/element": "https://esm.sh/@wordpress/element@6.24.0?bundle&external=react,react-dom",
+    "@wordpress/components": "https://esm.sh/@wordpress/components@29.12.0?bundle&external=react,react-dom",
+    "@wordpress/icons": "https://esm.sh/@wordpress/icons@10.24.0?bundle&external=react,react-dom",
+    "@wordpress/api-fetch": "https://esm.sh/@wordpress/api-fetch@7.24.0?bundle",
+    "@wordpress/i18n": "https://esm.sh/@wordpress/i18n@5.24.0?bundle",
+    "@wordpress/hooks": "https://esm.sh/@wordpress/hooks@4.24.0?bundle",
+    "@wordpress/url": "https://esm.sh/@wordpress/url@4.24.0?bundle",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.80.7?bundle&dev&external=react,react-dom",
+    "react-router-dom": "https://esm.sh/react-router-dom@7.6.2?bundle&dev&external=react,react-dom"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.27.6/babel.min.js"></script>
+</head>
+<body>
+<div id="forumwp-root"></div>
+<div id="console"></div>
+
+<script type="text/plain" id="example">
+// @id 55.1
+// @title Check then send, or one conditional write
+// @section 55.7
+// @click Send both at the same moment
+import { createRoot, useState } from '@wordpress/element'; // Added so this runs on its own
+import { Button, CheckboxControl } from '@wordpress/components'; // Added so this runs on its own
+
+// Added so this runs on its own: a pretend usermeta table (Kemi's last bulk email, as a day
+// number), a pretend mail server, and a way to run two senders "at the same moment". Each
+// sender is a list of steps; a step is one database statement or one email. At the same
+// moment, the broadcast does a step, then the automation does one, and so on.
+const LIMIT_DAYS = 3;
+const TODAY = 10;
+const cutoff = TODAY - LIMIT_DAYS; // A last email on or before day 7 is old enough.
+const db = { meta: {}, inbox: [] };
+const reset = ( neverHad ) => {
+  db.meta = neverHad ? {} : { kemi: [ TODAY - 5 ] }; // usermeta rows for Kemi: day 5
+  db.inbox = [];
+};
+
+// Before the fix: BulkLimit::holds(), then wp_mail(), then BulkLimit::stamp().
+const checkThenSend = ( who, say ) => {
+  const mine = {};
+  return [
+    () => { // holds(): SELECT meta_value … ; is it after the cutoff?
+      const last = db.meta.kemi?.[ 0 ];
+      mine.held = last !== undefined && last > cutoff;
+      say( `${ who }: checked Kemi. Last bulk email: ${ last === undefined ? 'never' : 'day ' + last }. ${ mine.held ? 'Held back.' : 'Not held.' }` );
+    },
+    () => { // wp_mail()
+      if ( ! mine.held ) {
+        db.inbox.push( who );
+        say( `${ who }: sent Kemi an email.` );
+      }
+    },
+    () => { // stamp(): update_user_meta( … today )
+      if ( ! mine.held ) {
+        db.meta.kemi = [ TODAY ];
+        say( `${ who }: noted day ${ TODAY } as her last bulk email.` );
+      }
+    },
+  ];
+};
+
+// ForumWP Pro 1.0.0-beta.40: BulkLimit::claim(), then the email only if it said yes.
+const claimThenSend = ( who, say ) => {
+  const mine = {};
+  const rows = () => db.meta.kemi ?? [];
+  return [
+    () => {
+      if ( rows().length ) {
+        // UPDATE usermeta SET meta_value = today WHERE … AND meta_value <= cutoff
+        const changed = rows()[ 0 ] <= cutoff ? 1 : 0;
+        if ( changed ) {
+          db.meta.kemi = [ TODAY ];
+        }
+        mine.go = changed > 0;
+        mine.done = true;
+        say( `${ who }: one UPDATE "set day ${ TODAY } if her day is ${ cutoff } or earlier": ${ changed } row changed. ${ mine.go ? 'It may send.' : 'Held back (marked "limited").' }` );
+      } else {
+        // add_user_meta( …, true ) step 1: is there a row?
+        mine.free = true;
+        say( `${ who }: no row for Kemi yet. add_user_meta() looks: none there.` );
+      }
+    },
+    () => {
+      if ( ! mine.done && mine.free ) {
+        // add_user_meta( …, true ) step 2: INSERT
+        db.meta.kemi = [ ...rows(), TODAY ];
+        mine.go = true;
+        say( `${ who }: added a row (usermeta has no unique key to stop a second one).` );
+      }
+    },
+    () => {
+      if ( mine.go ) {
+        db.inbox.push( who );
+        say( `${ who }: sent Kemi an email.` );
+      }
+    },
+  ];
+};
+
+// Added so this runs on its own: one at a time, or a step each in turn.
+const run = ( senders, together ) => {
+  if ( ! together ) {
+    senders.forEach( ( steps ) => steps.forEach( ( step ) => step() ) );
+    return;
+  }
+  for ( let i = 0; i < 3; i++ ) {
+    senders.forEach( ( steps ) => steps[ i ]() );
+  }
+};
+
+// Added so this runs on its own.
+const App = () => {
+  const [ fixed, setFixed ] = useState( false );
+  const [ neverHad, setNeverHad ] = useState( false );
+  const [ lines, setLines ] = useState( [] );
+  const [ inbox, setInbox ] = useState( null );
+
+  const go = ( together ) => {
+    reset( neverHad );
+    const out = [];
+    const say = ( line ) => {
+      out.push( line );
+      console.log( line );
+    };
+    const make = fixed ? claimThenSend : checkThenSend;
+    say( `Limit: 1 bulk email every ${ LIMIT_DAYS } days. Today is day ${ TODAY }. ${ together ? 'Both at the same moment:' : 'One after the other:' }` );
+    run( [ make( 'Broadcast', say ), make( 'Automation', say ) ], together );
+    setLines( out );
+    setInbox( db.inbox.length );
+  };
+
+  return (
+    <div className="fwp-card" style={ { maxWidth: 640 } }>
+      <CheckboxControl __nextHasNoMarginBottom label="One conditional write (BulkLimit::claim(), 1.0.0-beta.40)" checked={ fixed } onChange={ setFixed } />
+      <CheckboxControl __nextHasNoMarginBottom label="Kemi has never had a bulk email (no row yet)" checked={ neverHad } onChange={ setNeverHad } />
+      <p style={ { display: 'flex', gap: 8, flexWrap: 'wrap' } }>
+        <Button variant="primary" onClick={ () => go( true ) }>Send both at the same moment</Button>
+        <Button variant="secondary" onClick={ () => go( false ) }>One after the other</Button>
+      </p>
+      <ol style={ { fontSize: 13 } }>
+        { lines.map( ( line, i ) => <li key={ i }>{ line }</li> ) }
+      </ol>
+      { inbox !== null && (
+        <p>
+          <strong>Kemi's inbox: { inbox } bulk email{ inbox === 1 ? '' : 's' }.</strong>{ ' ' }
+          { inbox > 1 ? 'The limit allowed one.' : 'As the limit promises.' }
+        </p>
+      ) }
+    </div>
+  );
+};
+
+createRoot( document.getElementById( 'forumwp-root' ) ).render( <App /> );
+
+</script>
+<script>
+  // Turns the JSX above into plain JavaScript (what wp-scripts does in the course) and runs it.
+  const source = document.getElementById('example').textContent;
+  const { code } = Babel.transform(source, { presets: [['react', { runtime: 'automatic' }]], filename: 'example.js' });
+  const run = document.createElement('script');
+  run.type = 'module';
+  run.textContent = code;
+  document.body.appendChild(run);
+</script>
+</body>
+</html>
